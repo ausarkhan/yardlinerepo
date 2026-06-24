@@ -1,0 +1,152 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* YardLine design system. All colors HSL.
+   Brand: Gold #F5B800 (45 100% 48%) · Maroon #8B1538 (342 74% 31%) · Green #1D7A3E (141 62% 30%)
+   Backgrounds: #FAF9F7 light · #1A1815 dark
+*/
+
+@layer base {
+  :root {
+    --background: 40 23% 97%;
+    --foreground: 36 25% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 36 25% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 36 25% 12%;
+
+    --primary: 45 100% 48%;
+    --primary-foreground: 36 35% 10%;
+
+    --secondary: 342 74% 31%;
+    --secondary-foreground: 40 33% 97%;
+
+    --muted: 40 16% 91%;
+    --muted-foreground: 36 8% 42%;
+
+    --accent: 141 62% 30%;
+    --accent-foreground: 40 33% 97%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 40 33% 97%;
+
+    --border: 40 13% 85%;
+    --input: 40 13% 85%;
+    --ring: 45 100% 48%;
+
+    --radius: 0.85rem;
+
+    --gold: 45 100% 48%;
+    --maroon: 342 74% 31%;
+    --green: 141 62% 30%;
+
+    --sidebar-background: 40 20% 95%;
+    --sidebar-foreground: 36 25% 12%;
+    --sidebar-primary: 45 100% 48%;
+    --sidebar-primary-foreground: 36 35% 10%;
+    --sidebar-accent: 40 16% 91%;
+    --sidebar-accent-foreground: 36 25% 12%;
+    --sidebar-border: 40 13% 85%;
+    --sidebar-ring: 45 100% 48%;
+  }
+
+  .dark {
+    --background: 36 11% 9%;
+    --foreground: 40 20% 92%;
+
+    --card: 36 12% 12%;
+    --card-foreground: 40 20% 92%;
+
+    --popover: 36 12% 12%;
+    --popover-foreground: 40 20% 92%;
+
+    --primary: 45 100% 52%;
+    --primary-foreground: 36 35% 8%;
+
+    --secondary: 342 56% 44%;
+    --secondary-foreground: 40 33% 96%;
+
+    --muted: 36 10% 17%;
+    --muted-foreground: 40 8% 62%;
+
+    --accent: 141 50% 44%;
+    --accent-foreground: 40 33% 96%;
+
+    --destructive: 0 62% 48%;
+    --destructive-foreground: 40 33% 96%;
+
+    --border: 36 10% 20%;
+    --input: 36 10% 20%;
+    --ring: 45 100% 52%;
+
+    --gold: 45 100% 52%;
+    --maroon: 342 56% 52%;
+    --green: 141 50% 46%;
+
+    --sidebar-background: 36 12% 11%;
+    --sidebar-foreground: 40 20% 92%;
+    --sidebar-primary: 45 100% 52%;
+    --sidebar-primary-foreground: 36 35% 8%;
+    --sidebar-accent: 36 10% 17%;
+    --sidebar-accent-foreground: 40 20% 92%;
+    --sidebar-border: 36 10% 20%;
+    --sidebar-ring: 45 100% 52%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "DM Sans", sans-serif;
+    font-feature-settings: "ss01";
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-tight;
+  }
+}
+
+@layer utilities {
+  .font-heading {
+    font-family: "Outfit", sans-serif;
+  }
+
+  /* Warm collegiate backdrop with brand glows */
+  .bg-field {
+    background-image:
+      radial-gradient(circle at 12% 18%, hsl(var(--gold) / 0.12), transparent 42%),
+      radial-gradient(circle at 88% 4%, hsl(var(--maroon) / 0.10), transparent 40%),
+      radial-gradient(circle at 50% 108%, hsl(var(--green) / 0.07), transparent 55%);
+  }
+
+  .text-gradient-gold {
+    background: linear-gradient(95deg, hsl(var(--gold)), hsl(45 100% 64%));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* Faint football yard-line stripes */
+  .yardline-stripes {
+    background-image: repeating-linear-gradient(
+      90deg,
+      hsl(var(--foreground) / 0.045) 0px,
+      hsl(var(--foreground) / 0.045) 1px,
+      transparent 1px,
+      transparent 56px
+    );
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-xl;
+  }
+}

@@ -1,0 +1,136 @@
+YardLine Web — Phase 1 Foundation
+
+- Reused existing Supabase backend (8 tables) without schema changes; inspected via REST.
+- Built on Vite + React (platform constraint; Next.js cannot run as the live preview) with
+  TypeScript, Tailwind, shadcn/ui, TanStack Query, Zustand, React Router.
+- Brand theme: gold/maroon/green, Outfit + DM Sans, full light + dark mode.
+- Supabase passwordless OTP auth (/login, /verify) with auto profile creation.
+- Protected routing + redirects; responsive navbar, mobile menu, footer, user menu, theme toggle.
+- Home (hero + featured events/providers + CTAs), Events directory (search/filter/sort),
+  Event detail (RSVP for free, ticket display for paid — no Stripe), Services directory,
+  Provider profile (services/reviews/availability), Profile editing + avatar upload.
+- Robust handling of mobile file:// photo paths via curated fallbacks.
+- Typecheck clean; production build passes.
+- Changes made by agent 2026-06-15T03:13:36Z
+
+YardLine Web — Phase 2: Events, YardTix & Host Tools
+
+- Inspected live schema first; reused events / event_attendees, no tables renamed or dropped.
+- Verified RLS against the real DB: authenticated users can create/edit/publish their own
+  events; edits are host-scoped; event_attendees enforces ONE record per (event, user).
+- Create/edit event flow (/create-event, /event/:id/edit): details, date/time, location,
+  cover preset+URL picker (storage uploads are RLS-locked, so no broken uploads), free vs
+  paid, ticket-tier editor, capacity, refund policy, draft/publish.
+- Event detail expanded: RSVP (free), ticket tier selector + reservation (paid, no Stripe),
+  live capacity bars, host profile link, share, report placeholder, refund policy section,
+  host management bar.
+- My YardTix (/my-yardtix): tickets/RSVPs with YT-/YO- numbers, status, QR placeholder.
+- Host dashboard (/host-dashboard): own events, drafts/published, RSVP & ticket counts,
+  publish/cancel/edit/view.
+- Attendees page (/event/:id/attendees): host-only roster with CSV export.
+- Category list constrained to the events_category_check values (party/social/academic/other);
+  profile creation fixed to satisfy NOT-NULL name/handle/campus/joined_date.
+- Shipped supabase/migrations/0001_yardtix_orders_tickets.sql for the richer order/ticket
+  ledger (DDL can't be applied from this environment) — Phase 4 Stripe-ready.
+- Typecheck clean; production build passes; live smoke test green.
+- Changes made by agent 2026-06-16T03:31:57Z
+- Changes made by agent 2026-06-16T03:33:51Z
+- Changes made by agent 2026-06-16T03:36:25Z
+- Changes made by agent 2026-06-16T03:45:20Z
+- Changes made by agent 2026-06-16T16:37:51Z
+- Changes made by agent 2026-06-16T17:17:45Z
+
+YardLine Web — Phase 3 Revision: Unified Creator Dashboard & Stripe Connect
+
+- Inspected the live Supabase schema first: stripe_connect_accounts, bookings (deposit/final/
+  auth-hold + platform_fee + decline_reason), events.host_stripe_account_id and
+  service_providers.provider_stripe_account_id already exist — the DB was already Stripe-ready,
+  so no new tables were created.
+- New unified /creator-dashboard with Events / Services / Payments tabs (?tab= synced); replaces
+  the separate /host-dashboard, /provider-dashboard and /provider-setup, which now redirect into it.
+  Provider profile create/edit folded into the Services tab via a dialog (ProviderProfileForm).
+- Analytics strip: active events/services, pending & upcoming bookings, tickets sold, revenue
+  placeholder, Stripe activation status — reusing existing hooks (no new queries).
+- Payments tab: live Stripe Connect status (Not Activated / Pending Verification / Restricted /
+  Active), charges/payouts enabled, last update, and an Activate Payments button that creates/
+  resumes real test-mode Connect onboarding and redirects to Stripe, returning to the dashboard.
+- Backend: added the Stripe SDK + /api/payments/connect/{onboard,status} (Express accounts +
+  account links, Supabase-token auth, service-role upsert into stripe_connect_accounts). Verified
+  end-to-end against real Stripe test mode (account created, link issued, row persisted, cleaned up).
+- Access rules: paid events can't publish and paid bookings can't be accepted until payments are
+  active; free events/services always allowed — with clear in-tab notices.
+- Shipped supabase/migrations/0002_booking_lifecycle.sql extending bookings.status with
+  pending_provider_review / completed / refund_pending / refunded (additive, guarded). Must be
+  applied in the Supabase SQL editor before those statuses (e.g. "Mark completed") work live.
+- Typecheck clean (webapp + backend); webapp production build passes.
+- Changes made by agent 2026-06-16T17:40:00Z
+- Changes made by agent 2026-06-17T04:00:04Z
+- Changes made by agent 2026-06-17T04:05:03Z
+- Changes made by agent 2026-06-17T04:09:59Z
+- Changes made by agent 2026-06-17T04:31:00Z
+- Changes made by agent 2026-06-21T01:40:09Z
+- Changes made by agent 2026-06-21T01:43:48Z
+- Changes made by agent 2026-06-21T01:49:53Z
+- Changes made by agent 2026-06-21T01:57:17Z
+- Changes made by agent 2026-06-21T02:07:43Z
+- Changes made by agent 2026-06-21T06:47:36Z
+- Changes made by agent 2026-06-21T06:52:21Z
+- Changes made by agent 2026-06-21T07:05:28Z
+- Changes made by agent 2026-06-21T07:13:48Z
+
+YardLine Web — Phase 4: Stripe Payments (status — partially live, env-blocked)
+
+- Database migrations applied to the live Supabase project:
+  - 0001_yardtix_orders_tickets.sql — yardtix_orders / yardtix_tickets ledger: APPLIED.
+  - 0003_phase4_payments.sql — checkout_session_id + currency, bookings.payment_status
+    CHECK, stripe_webhook_events idempotency ledger: APPLIED.
+  - 0002_booking_lifecycle.sql — NOT applied as a migration (it errored with 42710 because
+    0003 ran first and 0002's `%status%` constraint matcher is ambiguous once
+    bookings_payment_status_check exists). Resolved by direct verification instead — see below.
+- Booking constraints confirmed correct on the live DB:
+  - bookings_status_check allows: requested, pending, pending_provider_review, confirmed,
+    declined, cancelled, checkout_created, completed, refund_pending, refunded.
+  - bookings_payment_status_check allows: none, authorized, captured, failed, refunded.
+- Phase 4 API routes are mounted and auth-gated (all return 401 without a valid Supabase token):
+  POST /api/checkout/event-session, POST /api/checkout/booking-intent,
+  GET /api/checkout/session/:id/status, POST /api/bookings/:id/accept,
+  POST /api/bookings/:id/decline, POST /api/payments/connect/onboard.
+- Stripe webhook endpoint exists: POST /api/webhooks/stripe (signature-verified, idempotent
+  via stripe_webhook_events).
+- CURRENT BLOCKER: the running backend is missing or not loading STRIPE_SECRET_KEY and/or
+  STRIPE_WEBHOOK_SECRET, so POST /api/webhooks/stripe returns 503 "Webhooks not configured"
+  instead of 400. The full payment happy-path (checkout -> webhook -> mint tickets; authorize
+  -> capture/decline) cannot run end-to-end until the backend env is fixed and restarted.
+  Fix + verification steps documented in docs/phase-4-payments.md.
+- Full Stripe live E2E intentionally deferred; next platform features proceed without it.
+- Changes made by agent 2026-06-21T07:13:48Z
+
+YardLine Web — Phase 5: Ticket Check-in (QR scan + manual entry)
+
+- Closes the events loop using the existing yardtix_tickets.qr_token / used_at columns — no
+  new migration required. Runs through the service-role backend because RLS only lets a
+  holder update their own ticket, not a host.
+- Shared contract added to backend/src/types.ts: CheckinScanRequest, CheckinScanResponse,
+  CheckinResultCode (ok / already_used / not_found / wrong_event / not_authorized /
+  invalid_status), CheckinTicket, CheckinSummaryResponse.
+- Backend (backend/src/routes/checkin.ts, mounted at /api/checkin):
+  - POST /api/checkin/scan — host-gated; finds a ticket by qr_token or ticket_number,
+    verifies the caller hosts the ticket's event, admits it (status='used', used_at=now) or
+    returns the precise domain result. holder_name joined best-effort from profiles.
+  - GET /api/checkin/event/:id/summary — host-only roster + counts (total / checked_in /
+    remaining) over admissible (confirmed|used) tickets.
+  - Auth-gated (401 verified live), typecheck clean.
+- Webapp:
+  - Holder tickets now render a REAL scannable QR (qrcode.react) of qr_token, with the
+    ticket_number beneath for manual entry; RSVPs keep the door-stub placeholder.
+  - Host-only /event/:id/checkin page: camera QR scanner (@zxing/browser, degrades to manual
+    entry on permission-denied), manual ticket-number entry, per-scan result card, live
+    roster/counts with progress, and same-token debounce.
+  - Host entry points added on the event detail host bar and dashboard event rows.
+  - useCheckin hook (summary query + scan mutation, Supabase bearer token); typecheck + build clean.
+- Note: live camera decode unverified in this environment; manual-entry path, host guard, and
+  all types/build verified.
+- Changes made by agent 2026-06-21T07:13:48Z
+- Changes made by agent 2026-06-21T07:31:28Z
+- Changes made by agent 2026-06-21T07:55:14Z
+- Changes made by agent 2026-06-21T08:02:05Z
