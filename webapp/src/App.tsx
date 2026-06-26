@@ -34,6 +34,12 @@ import AdminReports from "./pages/AdminReports";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import Waiver from "./pages/Waiver";
+// Phase 6 — organizations and campus management
+import Organizations from "./pages/Organizations";
+import OrganizationDetail from "./pages/OrganizationDetail";
+import NewOrganization from "./pages/NewOrganization";
+import EditOrganization from "./pages/EditOrganization";
+import OrgDashboard from "./pages/OrgDashboard";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 30_000 } },
@@ -82,6 +88,13 @@ function AppRoutes() {
         <Route path="/report" element={<Report />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/reports" element={<AdminReports />} />
+
+        {/* Phase 6 — organizations */}
+        <Route path="/organizations" element={<Organizations />} />
+        <Route path="/organizations/new" element={<NewOrganization />} />
+        <Route path="/organizations/:id" element={<OrganizationDetail />} />
+        <Route path="/organizations/:id/edit" element={<EditOrganization />} />
+        <Route path="/org-dashboard" element={<OrgDashboard />} />
 
         {/* Phase 3 unified the host + provider dashboards into /creator-dashboard.
             Keep the old paths working (mobile app / saved links) as redirects. */}

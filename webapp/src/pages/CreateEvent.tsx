@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Save, Send, CalendarPlus, Ticket, PartyPopper } from "lucide-react";
+import { Loader2, Save, Send, CalendarPlus, Ticket, PartyPopper, UserRound, Users2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +25,7 @@ import { createEvent, updateEvent, eventTiers, parseRefundPolicy } from "@/lib/e
 import type { EventDraftInput } from "@/lib/events";
 import { REFUND_POLICIES, type Tier, type EventStatus } from "@/lib/yardtix";
 import { EVENT_CATEGORIES, titleCase, COVER_PRESETS } from "@/lib/helpers";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 function emptyTier(): Tier {

@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/common/EmptyState";
+import { EventCard } from "@/components/events/EventCard";
 import { MemberList } from "@/components/organizations/MemberList";
 import { MemberManageControl } from "@/components/organizations/MemberManageControl";
 import { JoinRequestList } from "@/components/organizations/JoinRequestList";
 import { AnnouncementList } from "@/components/organizations/AnnouncementList";
 import { PostAnnouncementDialog } from "@/components/organizations/PostAnnouncementDialog";
 import { RoleBadge } from "@/components/organizations/RoleBadge";
-import { useMyMemberships, useOrgActivity } from "@/hooks/useOrganizations";
+import { useMyMemberships, useOrgActivity, useOrgEvents } from "@/hooks/useOrganizations";
 import { useAuthStore } from "@/store/auth";
 import { isOfficer, isApprover, isLeader } from "@/lib/organizations";
 import { avatarUrl, initials, formatRelativeTime, titleCase } from "@/lib/helpers";
@@ -38,6 +39,7 @@ export default function OrgDashboard() {
   const leader = isLeader(role);
 
   const activity = useOrgActivity(selectedId ?? undefined, !!selected);
+  const events = useOrgEvents(selectedId ?? undefined);
 
   if (isLoading) {
     return (
@@ -146,12 +148,35 @@ export default function OrgDashboard() {
           <Tabs defaultValue="overview">
             <TabsList className="mb-6 flex-wrap">
               <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="events">Events</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
               {approver ? <TabsTrigger value="requests">Requests</TabsTrigger> : null}
               <TabsTrigger value="announcements">Announcements</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
+              <div>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h2 className="font-heading text-lg font-bold">Organization events</h2>
+                  {officer ? (
+                    <Button size="sm" variant="outline" onClick={() => navigate(`/create-event?org=${selected.organization_id}`)}>
+                      <CalendarPlus className="h-4 w-4" />
+                      New event
+                    </Button>
+                  ) : null}
+                </div>
+                {events.isLoading ? (
+                  <Skeleton className="h-28 w-full rounded-xl" />
+                ) : (events.data ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No organization events yet.</p>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {(events.data ?? []).slice(0, 4).map((event, i) => (
+                      <EventCard key={event.id} event={event} index={i} />
+                    ))}
+                  </div>
+                )}
+              </div>
               <div>
                 <h2 className="mb-3 font-heading text-lg font-bold">Announcements</h2>
                 <AnnouncementList orgId={selected.organization_id} />
@@ -175,6 +200,30 @@ export default function OrgDashboard() {
                   </ul>
                 )}
               </div>
+            </TabsContent>
+
+            <TabsContent value="events" className="space-y-4">
+              {officer ? (
+                <Button size="sm" onClick={() => navigate(`/create-event?org=${selected.organization_id}`)}>
+                  <CalendarPlus className="h-4 w-4" />
+                  Create organization event
+                </Button>
+              ) : null}
+              {events.isLoading ? (
+                <Skeleton className="h-28 w-full rounded-xl" />
+              ) : (events.data ?? []).length === 0 ? (
+                <EmptyState
+                  icon={CalendarPlus}
+                  title="No organization events"
+                  description="Officer-created events will appear here and on the organization profile."
+                />
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {(events.data ?? []).map((event, i) => (
+                    <EventCard key={event.id} event={event} index={i} />
+                  ))}
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="members">
