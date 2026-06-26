@@ -53,6 +53,9 @@ export async function ensureProfile(user: User): Promise<Profile | null> {
     name: (user.user_metadata?.name as string) || user.email?.split("@")[0] || "New Member",
     handle: handleFromEmail(user.email),
     avatar: null,
+    banner: null,
+    bio: null,
+    social_links: {},
     campus: "",
     joined_date: nowIso,
     is_provider: false,
@@ -76,7 +79,7 @@ export async function ensureProfile(user: User): Promise<Profile | null> {
 // Persist editable profile fields.
 export async function updateProfile(
   userId: string,
-  patch: Partial<Pick<Profile, "name" | "handle" | "campus" | "avatar">>,
+  patch: Partial<Pick<Profile, "name" | "handle" | "campus" | "avatar" | "banner" | "bio" | "social_links">>,
 ): Promise<Profile> {
   const { data, error } = await supabase
     .from("profiles")
@@ -88,14 +91,18 @@ export async function updateProfile(
   return data as Profile;
 }
 
-// Upload an avatar image to the public `avatars` bucket and return its URL.
-export async function uploadAvatar(userId: string, file: File): Promise<string> {
+// Upload a profile image to the public `avatars` bucket and return its URL.
+export async function uploadProfileImage(userId: string, file: File, kind: "avatar" | "banner"): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-  const path = `${userId}/${Date.now()}.${ext}`;
+  const path = `${userId}/${kind}-${Date.now()}.${ext}`;
   const { error } = await supabase.storage
     .from("avatars")
     .upload(path, file, { upsert: true, contentType: file.type });
   if (error) throw error;
   const { data } = supabase.storage.from("avatars").getPublicUrl(path);
   return data.publicUrl;
+}
+
+export function uploadAvatar(userId: string, file: File): Promise<string> {
+  return uploadProfileImage(userId, file, "avatar");
 }

@@ -1,3 +1,18 @@
+YardLine Web — Launch Readiness
+
+- Ran production launch verification for the current app surface: web build, web lint,
+  and backend typecheck all pass.
+- Hardened profile readiness with additive profile fields for bio, banner, and social links,
+  plus banner upload and async profile form synchronization.
+- Removed normal 404 navigation console noise and switched the 404 return action to React Router
+  navigation.
+- Tightened Phase 7 attachment permissions so authorized budget roles can upload supporting
+  documents during review while ordinary members cannot.
+- Made Phase 7 storage policies deterministic on rerun by dropping/recreating the policies.
+- Cleaned a no-op admin budget UI artifact and fixed an actionable creator dashboard hook
+  dependency warning.
+- Changes made by agent 2026-06-26
+
 YardLine Web — Phase 7: Budget Requests and Campus Funding Workflow
 
 - Added Phase 7 database migration 0006_phase7_budget_requests.sql for budget_requests,

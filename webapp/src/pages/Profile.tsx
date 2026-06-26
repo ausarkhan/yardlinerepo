@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   Camera,
@@ -9,14 +9,17 @@ import {
   BadgeCheck,
   Save,
   AtSign,
+  Image,
+  Link as LinkIcon,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/store/auth";
-import { updateProfile, uploadAvatar } from "@/lib/auth";
+import { updateProfile, uploadAvatar, uploadProfileImage } from "@/lib/auth";
 import { avatarUrl, initials, formatEventDate } from "@/lib/helpers";
 import { toast } from "sonner";
 
@@ -25,16 +28,37 @@ export default function Profile() {
   const user = useAuthStore((s) => s.user);
   const setProfile = useAuthStore((s) => s.setProfile);
   const fileRef = useRef<HTMLInputElement>(null);
+  const bannerRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState(profile?.name ?? "");
   const [handle, setHandle] = useState(profile?.handle ?? "");
   const [campus, setCampus] = useState(profile?.campus ?? "");
+  const [bio, setBio] = useState(profile?.bio ?? "");
+  const [website, setWebsite] = useState(profile?.social_links?.website ?? "");
+  const [instagram, setInstagram] = useState(profile?.social_links?.instagram ?? "");
+  const [linkedin, setLinkedin] = useState(profile?.social_links?.linkedin ?? "");
   const [uploading, setUploading] = useState(false);
+  const [bannerUploading, setBannerUploading] = useState(false);
+
+  useEffect(() => {
+    if (!profile) return;
+    setName(profile.name ?? "");
+    setHandle(profile.handle ?? "");
+    setCampus(profile.campus ?? "");
+    setBio(profile.bio ?? "");
+    setWebsite(profile.social_links?.website ?? "");
+    setInstagram(profile.social_links?.instagram ?? "");
+    setLinkedin(profile.social_links?.linkedin ?? "");
+  }, [profile]);
 
   const dirty =
     name !== (profile?.name ?? "") ||
     handle !== (profile?.handle ?? "") ||
-    campus !== (profile?.campus ?? "");
+    campus !== (profile?.campus ?? "") ||
+    bio !== (profile?.bio ?? "") ||
+    website !== (profile?.social_links?.website ?? "") ||
+    instagram !== (profile?.social_links?.instagram ?? "") ||
+    linkedin !== (profile?.social_links?.linkedin ?? "");
 
   const save = useMutation({
     mutationFn: async () => {
@@ -44,6 +68,12 @@ export default function Profile() {
         name: name.trim() || "Member",
         handle: handle.trim() || "@member",
         campus: campus.trim(),
+        bio: bio.trim() || null,
+        social_links: {
+          website: website.trim(),
+          instagram: instagram.trim(),
+          linkedin: linkedin.trim(),
+        },
       });
     },
     onSuccess: (updated) => {
@@ -74,6 +104,27 @@ export default function Profile() {
     }
   }
 
+  async function onBanner(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file");
+      return;
+    }
+    setBannerUploading(true);
+    try {
+      const url = await uploadProfileImage(user.id, file, "banner");
+      const updated = await updateProfile(user.id, { banner: url });
+      setProfile(updated);
+      toast.success("Banner updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setBannerUploading(false);
+      if (bannerRef.current) bannerRef.current.value = "";
+    }
+  }
+
   const displayName = name || profile?.name || "Your name";
 
   return (
@@ -82,7 +133,18 @@ export default function Profile() {
 
       {/* Identity card */}
       <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <div className="bg-field absolute inset-0 opacity-60" />
+        {profile?.banner && avatarUrl(profile.banner) ? (
+          <img src={avatarUrl(profile.banner)} alt="" className="absolute inset-0 h-full w-full object-cover opacity-35" />
+        ) : (
+          <div className="bg-field absolute inset-0 opacity-60" />
+        )}
+        <div className="relative mb-4 flex justify-end">
+          <Button type="button" variant="secondary" size="sm" onClick={() => bannerRef.current?.click()} disabled={bannerUploading}>
+            {bannerUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Image className="h-4 w-4" />}
+            Banner
+          </Button>
+          <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={onBanner} />
+        </div>
         <div className="relative flex flex-col items-center gap-4 sm:flex-row sm:items-center">
           <div className="relative">
             <Avatar className="h-24 w-24 border-4 border-background shadow-md">
@@ -121,6 +183,7 @@ export default function Profile() {
             {profile?.handle ? (
               <p className="text-muted-foreground">{profile.handle}</p>
             ) : null}
+            {profile?.bio ? <p className="mt-2 max-w-xl text-sm text-muted-foreground">{profile.bio}</p> : null}
           </div>
         </div>
       </div>
@@ -157,6 +220,27 @@ export default function Profile() {
                 className="h-11 pl-9"
                 placeholder="Your school or campus"
               />
+            </div>
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="bio">Bio</Label>
+            <Textarea
+              id="bio"
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              maxLength={280}
+              placeholder="A short intro for classmates, hosts, and organizations"
+            />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label className="flex items-center gap-2">
+              <LinkIcon className="h-4 w-4" />
+              Social links
+            </Label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Website" />
+              <Input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="Instagram" />
+              <Input value={linkedin} onChange={(e) => setLinkedin(e.target.value)} placeholder="LinkedIn" />
             </div>
           </div>
         </div>

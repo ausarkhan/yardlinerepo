@@ -7,6 +7,9 @@ export interface Profile {
   handle: string | null;
   email: string | null;
   avatar: string | null;
+  banner?: string | null;
+  bio?: string | null;
+  social_links?: Record<string, string> | null;
   campus: string | null;
   joined_date: string | null;
   is_provider: boolean | null;
