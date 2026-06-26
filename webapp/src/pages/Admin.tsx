@@ -8,9 +8,10 @@ import { AdminEventsTable } from "@/components/admin/AdminEventsTable";
 import { AdminProvidersTable } from "@/components/admin/AdminProvidersTable";
 import { AdminOrganizationsTable } from "@/components/admin/AdminOrganizationsTable";
 import { AdminReportsQueue } from "@/components/admin/AdminReportsQueue";
+import { AdminBudgetRequests } from "@/components/admin/AdminBudgetRequests";
 import { ModerationHistory } from "@/components/admin/ModerationHistory";
 
-const TABS = ["overview", "users", "events", "organizations", "providers", "reports"] as const;
+const TABS = ["overview", "users", "events", "organizations", "providers", "reports", "budget"] as const;
 type AdminTab = (typeof TABS)[number];
 
 export default function Admin() {
@@ -39,6 +40,7 @@ export default function Admin() {
             <TabsTrigger value="organizations">Organizations</TabsTrigger>
             <TabsTrigger value="providers">Providers</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
+            <TabsTrigger value="budget">Budget requests</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-8">
@@ -63,6 +65,9 @@ export default function Admin() {
           </TabsContent>
           <TabsContent value="reports">
             <AdminReportsQueue />
+          </TabsContent>
+          <TabsContent value="budget">
+            <AdminBudgetRequests />
           </TabsContent>
         </Tabs>
       </div>

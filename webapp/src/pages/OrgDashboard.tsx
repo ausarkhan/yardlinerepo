@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Users2, Plus, CalendarPlus, Pencil, Activity, ExternalLink } from "lucide-react";
+import { Users2, Plus, CalendarPlus, Pencil, Activity, ExternalLink, FileText } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,9 +13,10 @@ import { JoinRequestList } from "@/components/organizations/JoinRequestList";
 import { AnnouncementList } from "@/components/organizations/AnnouncementList";
 import { PostAnnouncementDialog } from "@/components/organizations/PostAnnouncementDialog";
 import { RoleBadge } from "@/components/organizations/RoleBadge";
+import { OrgBudgetPanel } from "@/components/budget/OrgBudgetPanel";
 import { useMyMemberships, useOrgActivity, useOrgEvents } from "@/hooks/useOrganizations";
 import { useAuthStore } from "@/store/auth";
-import { isOfficer, isApprover, isLeader } from "@/lib/organizations";
+import { isOfficer, isApprover, isLeader, canManageBudget } from "@/lib/organizations";
 import { avatarUrl, initials, formatRelativeTime, titleCase } from "@/lib/helpers";
 
 export default function OrgDashboard() {
@@ -36,6 +37,7 @@ export default function OrgDashboard() {
   const role = selected?.role;
   const officer = isOfficer(role);
   const approver = isApprover(role);
+  const budgetManager = canManageBudget(role);
   const leader = isLeader(role);
 
   const activity = useOrgActivity(selectedId ?? undefined, !!selected);
@@ -143,6 +145,16 @@ export default function OrgDashboard() {
               </Button>
             ) : null}
             {officer ? <PostAnnouncementDialog orgId={selected.organization_id} /> : null}
+            {budgetManager ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/budget-requests/new?org=${selected.organization_id}`)}
+              >
+                <FileText className="h-4 w-4" />
+                Budget request
+              </Button>
+            ) : null}
           </div>
 
           <Tabs defaultValue="overview">
@@ -150,6 +162,7 @@ export default function OrgDashboard() {
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="events">Events</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
+              <TabsTrigger value="budget">Budget</TabsTrigger>
               {approver ? <TabsTrigger value="requests">Requests</TabsTrigger> : null}
               <TabsTrigger value="announcements">Announcements</TabsTrigger>
             </TabsList>
@@ -242,6 +255,10 @@ export default function OrgDashboard() {
                     : undefined
                 }
               />
+            </TabsContent>
+
+            <TabsContent value="budget">
+              <OrgBudgetPanel orgId={selected.organization_id} canCreate={budgetManager} />
             </TabsContent>
 
             {approver ? (

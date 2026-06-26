@@ -54,6 +54,9 @@ export function isLeader(role: string | null | undefined): boolean {
 export function isApprover(role: string | null | undefined): boolean {
   return !!role && APPROVER_ROLES.includes(role as OrgRole);
 }
+export function canManageBudget(role: string | null | undefined): boolean {
+  return !!role && ["president", "treasurer", "officer", "advisor", "admin"].includes(role);
+}
 export function canViewFinancials(role: string | null | undefined): boolean {
   return role === "treasurer" || isLeader(role);
 }

@@ -40,6 +40,12 @@ import OrganizationDetail from "./pages/OrganizationDetail";
 import NewOrganization from "./pages/NewOrganization";
 import EditOrganization from "./pages/EditOrganization";
 import OrgDashboard from "./pages/OrgDashboard";
+// Phase 7 — budget requests and campus funding workflow
+import BudgetRequests from "./pages/BudgetRequests";
+import NewBudgetRequest from "./pages/NewBudgetRequest";
+import BudgetRequestDetail from "./pages/BudgetRequestDetail";
+import OrgBudget from "./pages/OrgBudget";
+import AdminBudgetRequests from "./pages/AdminBudgetRequests";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 30_000 } },
@@ -88,6 +94,7 @@ function AppRoutes() {
         <Route path="/report" element={<Report />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/reports" element={<AdminReports />} />
+        <Route path="/admin/budget-requests" element={<AdminBudgetRequests />} />
 
         {/* Phase 6 — organizations */}
         <Route path="/organizations" element={<Organizations />} />
@@ -95,6 +102,12 @@ function AppRoutes() {
         <Route path="/organizations/:id" element={<OrganizationDetail />} />
         <Route path="/organizations/:id/edit" element={<EditOrganization />} />
         <Route path="/org-dashboard" element={<OrgDashboard />} />
+        <Route path="/org-dashboard/budget" element={<OrgBudget />} />
+
+        {/* Phase 7 — budget requests */}
+        <Route path="/budget-requests" element={<BudgetRequests />} />
+        <Route path="/budget-requests/new" element={<NewBudgetRequest />} />
+        <Route path="/budget-requests/:id" element={<BudgetRequestDetail />} />
 
         {/* Phase 3 unified the host + provider dashboards into /creator-dashboard.
             Keep the old paths working (mobile app / saved links) as redirects. */}

@@ -8,6 +8,7 @@ import {
   CalendarCheck,
   MessageSquare,
   Users2,
+  FileText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -31,6 +32,7 @@ export const ACCOUNT_ITEMS: NavItem[] = [
   { to: "/messages", label: "Messages", icon: MessageSquare },
   { to: "/my-bookings", label: "My bookings", icon: CalendarCheck },
   { to: "/org-dashboard", label: "Org dashboard", icon: Users2 },
+  { to: "/budget-requests", label: "Budget requests", icon: FileText },
   { to: "/creator-dashboard", label: "Creator dashboard", icon: LayoutDashboard },
   { to: "/profile", label: "Profile", icon: User },
 ];
