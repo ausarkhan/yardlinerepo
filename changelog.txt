@@ -134,3 +134,22 @@ YardLine Web — Phase 5: Ticket Check-in (QR scan + manual entry)
 - Changes made by agent 2026-06-21T07:31:28Z
 - Changes made by agent 2026-06-21T07:55:14Z
 - Changes made by agent 2026-06-21T08:02:05Z
+
+YardLine Web — Phase 6: Organizations and Campus Management
+
+- Reused the existing Phase 6 organization migration and domain layer instead of rebuilding:
+  organizations, organization_members, organization_join_requests, organization_announcements,
+  organization_activity_log, plus additive events.organization_id / host_type.
+- Wired the existing organization routes into the authenticated app:
+  /organizations, /organizations/:id, /organizations/new, /organizations/:id/edit, /org-dashboard.
+- Completed organization dashboard coverage with organization event listings and create-event
+  entry points alongside memberships, members, join requests, announcements, and activity.
+- Fixed organization-hosted event creation imports so officers can host events as eligible
+  organizations through the existing event/YardTix flow.
+- Added an Organizations tab to /admin using soft status management, advisor assignment,
+  officer visibility, member counts, and organization event counts.
+- Created PHASE6_SUMMARY.md with completed features, routes, schema, permissions, known gaps,
+  and Phase 7 recommendations.
+- Build note: the container does not have bun installed and webapp dependencies are absent, so
+  the project build could not be run locally in this environment.
+- Changes made by agent 2026-06-26T03:55:00Z

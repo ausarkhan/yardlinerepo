@@ -6,15 +6,18 @@ import {
   adminListUsers,
   adminListEvents,
   adminListProviders,
+  adminListOrganizations,
   adminListReports,
   listModerationHistory,
   suspendUser,
   reinstateUser,
   setEventHidden,
   setProviderHidden,
+  setOrganizationStatus,
+  assignOrganizationAdvisor,
   resolveReport,
 } from "@/lib/admin";
-import type { Report } from "@/lib/types";
+import type { OrgStatus, Report } from "@/lib/types";
 
 export function useIsAdmin(): boolean {
   const profile = useAuthStore((s) => s.profile);
@@ -57,6 +60,15 @@ export function useAdminProviders(page = 0) {
   });
 }
 
+export function useAdminOrganizations(page = 0) {
+  const admin = useIsAdmin();
+  return useQuery({
+    queryKey: ["admin-organizations", page],
+    enabled: admin,
+    queryFn: () => adminListOrganizations(page),
+  });
+}
+
 export function useAdminReports(status?: Report["status"]) {
   const admin = useIsAdmin();
   return useQuery({
@@ -81,9 +93,15 @@ export function useModerationActions() {
   const adminId = useAuthStore((s) => s.user?.id);
   const qc = useQueryClient();
   const invalidate = () => {
-    ["admin-users", "admin-events", "admin-providers", "admin-reports", "admin-metrics", "moderation-history"].forEach(
-      (k) => qc.invalidateQueries({ queryKey: [k] }),
-    );
+    [
+      "admin-users",
+      "admin-events",
+      "admin-providers",
+      "admin-organizations",
+      "admin-reports",
+      "admin-metrics",
+      "moderation-history",
+    ].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
   };
   const requireAdmin = () => {
     if (!adminId) throw new Error("Not authenticated");
@@ -109,6 +127,16 @@ export function useModerationActions() {
     setProviderHidden: useMutation({
       mutationFn: (v: { providerRowId: string; hidden: boolean; reason: string }) =>
         setProviderHidden(requireAdmin(), v.providerRowId, v.hidden, v.reason),
+      onSuccess: invalidate,
+    }),
+    setOrganizationStatus: useMutation({
+      mutationFn: (v: { organizationId: string; status: OrgStatus; reason: string }) =>
+        setOrganizationStatus(requireAdmin(), v.organizationId, v.status, v.reason),
+      onSuccess: invalidate,
+    }),
+    assignOrganizationAdvisor: useMutation({
+      mutationFn: (v: { organizationId: string; advisorName: string; advisorEmail: string }) =>
+        assignOrganizationAdvisor(requireAdmin(), v.organizationId, v.advisorName, v.advisorEmail),
       onSuccess: invalidate,
     }),
     resolveReport: useMutation({

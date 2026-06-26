@@ -7,7 +7,7 @@
 // nothing is hard-deleted.
 
 import { supabase } from "./supabase";
-import type { Profile, YardEvent, ServiceProvider, Report } from "./types";
+import type { Profile, YardEvent, ServiceProvider, Report, Organization, OrganizationMember, OrgStatus } from "./types";
 
 export function isAdmin(profile: Profile | null | undefined): boolean {
   return profile?.role === "admin";
@@ -85,6 +85,12 @@ export interface AdminProviderRow {
   bookingVolume: number;
 }
 
+export interface AdminOrganizationRow {
+  organization: Organization;
+  officers: OrganizationMember[];
+  eventCount: number;
+}
+
 export async function adminListProviders(page = 0): Promise<AdminProviderRow[]> {
   const { data, error } = await supabase
     .from("service_providers")
@@ -129,6 +135,46 @@ export async function adminListProviders(page = 0): Promise<AdminProviderRow[]> 
   });
 }
 
+export async function adminListOrganizations(page = 0): Promise<AdminOrganizationRow[]> {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .range(page * PAGE, page * PAGE + PAGE - 1);
+  if (error) throw error;
+
+  const orgs = (data ?? []) as Organization[];
+  if (orgs.length === 0) return [];
+
+  const ids = orgs.map((o) => o.id);
+  const [{ data: members }, { data: events }] = await Promise.all([
+    supabase
+      .from("organization_members")
+      .select("*")
+      .in("organization_id", ids)
+      .eq("status", "active")
+      .in("role", ["officer", "president", "treasurer", "advisor", "admin"]),
+    supabase.from("events").select("id, organization_id").in("organization_id", ids),
+  ]);
+
+  const officersByOrg: Record<string, OrganizationMember[]> = {};
+  ((members ?? []) as OrganizationMember[]).forEach((m) => {
+    (officersByOrg[m.organization_id] ??= []).push(m);
+  });
+
+  const eventCounts: Record<string, number> = {};
+  (events ?? []).forEach((event) => {
+    const orgId = (event as { organization_id: string | null }).organization_id;
+    if (orgId) eventCounts[orgId] = (eventCounts[orgId] ?? 0) + 1;
+  });
+
+  return orgs.map((organization) => ({
+    organization,
+    officers: officersByOrg[organization.id] ?? [],
+    eventCount: eventCounts[organization.id] ?? 0,
+  }));
+}
+
 export async function adminListReports(status?: Report["status"]): Promise<Report[]> {
   let q = supabase
     .from("reports")
@@ -151,6 +197,11 @@ export type ModerationActionType =
   | "restore_event"
   | "disable_provider"
   | "restore_provider"
+  | "set_org_pending"
+  | "set_org_active"
+  | "set_org_inactive"
+  | "set_org_archived"
+  | "assign_org_advisor"
   | "dismiss_report"
   | "resolve_report";
 
@@ -231,6 +282,39 @@ export async function setProviderHidden(
     providerRowId,
     reason,
   );
+}
+
+export async function setOrganizationStatus(
+  adminId: string,
+  organizationId: string,
+  status: OrgStatus,
+  reason: string,
+): Promise<void> {
+  const { error } = await supabase.from("organizations").update({ status }).eq("id", organizationId);
+  if (error) throw error;
+  await logModeration(adminId, `set_org_${status}` as ModerationActionType, "organization", organizationId, reason, {
+    status,
+  });
+}
+
+export async function assignOrganizationAdvisor(
+  adminId: string,
+  organizationId: string,
+  advisorName: string,
+  advisorEmail: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("organizations")
+    .update({
+      advisor_name: advisorName.trim() || null,
+      advisor_email: advisorEmail.trim() || null,
+    })
+    .eq("id", organizationId);
+  if (error) throw error;
+  await logModeration(adminId, "assign_org_advisor", "organization", organizationId, "Advisor updated", {
+    advisor_name: advisorName.trim() || null,
+    advisor_email: advisorEmail.trim() || null,
+  });
 }
 
 // Resolve a report. `actioned` = moderation was taken; `dismissed` = no action.
