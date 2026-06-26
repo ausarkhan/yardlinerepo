@@ -1,3 +1,14 @@
+YardLine Web — Organization Engagement Follow-up QA
+
+- Re-ran the migration 0010 follow-up checks in production: closed organization join
+  requests are blocked and malformed organization inbox conversations are blocked.
+- Verified organization budget request creation still failed under RLS even when the
+  creator was president, the organization was active/verified, and budget_can_submit
+  returned true.
+- Added supabase/migrations/0011_verified_budget_create_policy_fix.sql to evaluate
+  verified budget create permission through a SECURITY DEFINER helper.
+- Changes made by agent 2026-06-26
+
 YardLine Web — Live Organization Engagement QA
 
 - Created LIVE_ORG_ENGAGEMENT_QA_REPORT.md with live production QA evidence for the
