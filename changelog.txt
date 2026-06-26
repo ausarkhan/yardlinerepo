@@ -1,3 +1,18 @@
+YardLine Web — Live Production E2E QA
+
+- Created LIVE_E2E_QA_REPORT.md with live production QA evidence for auth, profile, orgs,
+  events, YardTix RSVP, services, bookings, messaging, reports/admin, notifications, and
+  Stripe test-mode checkout routes.
+- Fixed the backend CORS allowlist so the deployed Vercel frontend origin is permitted by
+  the Railway API.
+- Added supabase/migrations/0008_live_e2e_fixes.sql for live QA defects:
+  owner-scoped profile avatar/banner storage uploads, reviews.id UUID default, and explicit
+  budget request create RLS for authorized organization budget roles.
+- Verified Stripe TEST mode only: Connect status active, paid ticket Checkout Session created,
+  and booking PaymentIntent created; no payment was completed.
+- Verification passed: webapp build, webapp lint (warnings only), backend typecheck.
+- Changes made by agent 2026-06-26
+
 YardLine Web — Launch Readiness
 
 - Ran production launch verification for the current app surface: web build, web lint,
