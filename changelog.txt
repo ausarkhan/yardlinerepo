@@ -1,3 +1,18 @@
+YardLine Web — Live Commerce Validation
+
+- Created LIVE_COMMERCE_VALIDATION_REPORT.md with live production evidence for creator
+  commerce readiness, paid event checkout, free RSVP, service booking, negative payment
+  cases, browser routing, webhook rejection, and remaining launch blockers.
+- Added Vercel SPA rewrite config so direct client routes and Stripe return URLs resolve
+  to the React app instead of platform 404s.
+- Fixed backend booking-intent time normalization so service booking requests no longer
+  write invalid times like 10:00:00:00.
+- Added best-effort reuse of recent open Checkout Sessions and unresolved booking
+  PaymentIntents to reduce duplicate payment objects during rapid repeated requests.
+- Commerce remains not launch ready until these fixes are deployed and a full Stripe
+  test payment/webhook finalization pass is completed.
+- Changes made by agent 2026-06-26
+
 YardLine Web — Live Organization Engagement QA
 
 - Created LIVE_ORG_ENGAGEMENT_QA_REPORT.md with live production QA evidence for the
