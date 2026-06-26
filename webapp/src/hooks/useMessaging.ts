@@ -18,6 +18,7 @@ import type { Conversation, Message, Profile, ConversationContext } from "@/lib/
 
 export interface ConversationView extends Conversation {
   other: Profile | null;
+  org?: { name: string; logo: string | null } | null;
   unread: number;
 }
 
@@ -34,9 +35,25 @@ export function useConversations() {
         fetchParticipantProfiles(me!, convos),
         unreadByConversation(me!, convos.map((c) => c.id)),
       ]);
+      const orgIds = Array.from(
+        new Set(
+          convos
+            .filter((c) => c.context_type === "organization" && c.context_id)
+            .map((c) => c.context_id as string),
+        ),
+      );
+      const orgMap: Record<string, { name: string; logo: string | null }> = {};
+      if (orgIds.length > 0) {
+        const { data } = await supabase.from("organizations").select("id,name,logo").in("id", orgIds);
+        (data ?? []).forEach((o) => {
+          const row = o as { id: string; name: string; logo: string | null };
+          orgMap[row.id] = { name: row.name, logo: row.logo };
+        });
+      }
       return convos.map((c) => ({
         ...c,
         other: profiles[otherParticipant(c, me!)] ?? null,
+        org: c.context_type === "organization" && c.context_id ? orgMap[c.context_id] ?? null : null,
         unread: unread[c.id] ?? 0,
       }));
     },

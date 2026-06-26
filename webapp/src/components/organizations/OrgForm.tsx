@@ -34,6 +34,7 @@ function emptyInput(o?: Organization | null): OrgInput {
     advisor_name: o?.advisor_name ?? "",
     advisor_email: o?.advisor_email ?? "",
     department: o?.department ?? "",
+    membership_policy: (o?.membership_policy as OrgInput["membership_policy"]) ?? "approval_required",
   };
 }
 
@@ -116,6 +117,24 @@ export function OrgForm({ initial, submitting, submitLabel, onSubmit }: OrgFormP
             value={draft.advisor_email}
             onChange={(e) => set("advisor_email", e.target.value)}
           />
+        </Field>
+      </Section>
+
+      <Section title="Membership">
+        <Field label="Membership requests">
+          <Select
+            value={draft.membership_policy ?? "approval_required"}
+            onValueChange={(v) => set("membership_policy", v as OrgInput["membership_policy"])}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="approval_required">Approval required</SelectItem>
+              <SelectItem value="open">Open membership</SelectItem>
+              <SelectItem value="closed">Closed</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
       </Section>
 

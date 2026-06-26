@@ -16,6 +16,8 @@ import type {
   OrgAnnouncementVisibility,
   Profile,
   YardEvent,
+  Conversation,
+  Message,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -94,6 +96,8 @@ export interface OrgInput {
   advisor_name: string;
   advisor_email: string;
   department: string;
+  membership_policy?: "open" | "approval_required" | "closed";
+  verification_level?: "community" | "verified";
 }
 
 export async function listOrganizations(opts?: {
@@ -132,6 +136,8 @@ export async function createOrganization(input: OrgInput, userId: string): Promi
       advisor_name: input.advisor_name.trim() || null,
       advisor_email: input.advisor_email.trim() || null,
       department: input.department.trim() || null,
+      membership_policy: input.membership_policy ?? "approval_required",
+      verification_level: input.verification_level ?? "community",
       status: "active",
       created_by: userId,
     })
@@ -195,13 +201,27 @@ export async function myMembership(orgId: string, userId: string): Promise<Organ
   return (data as OrganizationMember) ?? null;
 }
 
-export async function setMemberRole(memberId: string, role: OrgRole): Promise<void> {
-  const { error } = await supabase.from("organization_members").update({ role }).eq("id", memberId);
+export async function setMemberRole(member: OrganizationMember, role: OrgRole): Promise<void> {
+  if (member.role === "president" && role !== "president") {
+    const members = await listMembers(member.organization_id);
+    const presidents = members.filter((m) => m.role === "president" && m.status === "active");
+    if (presidents.length <= 1) {
+      throw new Error("Assign another president before changing this role.");
+    }
+  }
+  const { error } = await supabase.from("organization_members").update({ role }).eq("id", member.id);
   if (error) throw error;
 }
 
-export async function removeMember(memberId: string): Promise<void> {
-  const { error } = await supabase.from("organization_members").delete().eq("id", memberId);
+export async function removeMember(member: OrganizationMember): Promise<void> {
+  if (member.role === "president") {
+    const members = await listMembers(member.organization_id);
+    const presidents = members.filter((m) => m.role === "president" && m.status === "active");
+    if (presidents.length <= 1) {
+      throw new Error("Organizations must have at least one president.");
+    }
+  }
+  const { error } = await supabase.from("organization_members").delete().eq("id", member.id);
   if (error) throw error;
 }
 
@@ -227,10 +247,31 @@ export async function fetchMemberProfiles(members: OrganizationMember[]): Promis
 // ---------------------------------------------------------------------------
 // Join requests
 // ---------------------------------------------------------------------------
-export async function requestToJoin(orgId: string, userId: string, message?: string): Promise<void> {
+export interface JoinRequestInput {
+  message: string;
+  classification_year?: string;
+  major?: string;
+  interests?: string;
+}
+
+export async function joinOpenOrganization(orgId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from("organization_members")
+    .insert({ organization_id: orgId, user_id: userId, role: "member", status: "active" });
+  if (error) throw error;
+}
+
+export async function requestToJoin(orgId: string, userId: string, input?: JoinRequestInput): Promise<void> {
   const { error } = await supabase
     .from("organization_join_requests")
-    .insert({ organization_id: orgId, user_id: userId, message: message?.trim() || null });
+    .insert({
+      organization_id: orgId,
+      user_id: userId,
+      message: input?.message?.trim() || null,
+      classification_year: input?.classification_year?.trim() || null,
+      major: input?.major?.trim() || null,
+      interests: input?.interests?.trim() || null,
+    });
   if (error) throw error;
 }
 
@@ -245,6 +286,17 @@ export async function myJoinRequest(orgId: string, userId: string): Promise<OrgJ
     .maybeSingle();
   if (error) throw error;
   return (data as OrgJoinRequest) ?? null;
+}
+
+export async function myPendingJoinRequests(userId: string): Promise<OrgJoinRequest[]> {
+  const { data, error } = await supabase
+    .from("organization_join_requests")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as OrgJoinRequest[];
 }
 
 export async function listJoinRequests(orgId: string, status = "pending"): Promise<OrgJoinRequest[]> {
@@ -297,6 +349,18 @@ export async function listAnnouncements(orgId: string): Promise<OrgAnnouncement[
   return (data ?? []) as OrgAnnouncement[];
 }
 
+export async function listAnnouncementsForOrgs(orgIds: string[], limit = 6): Promise<OrgAnnouncement[]> {
+  if (orgIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from("organization_announcements")
+    .select("*")
+    .in("organization_id", orgIds)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as OrgAnnouncement[];
+}
+
 export async function postAnnouncement(input: {
   orgId: string;
   authorId: string;
@@ -312,6 +376,119 @@ export async function postAnnouncement(input: {
     visibility: input.visibility,
   });
   if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Shared organization inbox
+// ---------------------------------------------------------------------------
+function orgInboxParticipant(orgId: string): string {
+  return `org:${orgId}`;
+}
+
+export interface OrgConversationView extends Conversation {
+  requester: Profile | null;
+  unread: number;
+}
+
+export async function getOrCreateOrgConversation(input: {
+  orgId: string;
+  userId: string;
+  initialMessage?: string;
+}): Promise<Conversation> {
+  const orgParticipant = orgInboxParticipant(input.orgId);
+  const { data: existing, error: existingError } = await supabase
+    .from("conversations")
+    .select("*")
+    .eq("participant_a", input.userId)
+    .eq("participant_b", orgParticipant)
+    .eq("context_type", "organization")
+    .eq("context_id", input.orgId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return existing as Conversation;
+
+  const { data, error } = await supabase
+    .from("conversations")
+    .insert({
+      participant_a: input.userId,
+      participant_b: orgParticipant,
+      context_type: "organization",
+      context_id: input.orgId,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  const convo = data as Conversation;
+  if (input.initialMessage?.trim()) {
+    await sendOrgInboxMessage(convo.id, input.userId, input.initialMessage);
+  }
+  return convo;
+}
+
+export async function listOrgInbox(orgId: string): Promise<OrgConversationView[]> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("*")
+    .eq("context_type", "organization")
+    .eq("context_id", orgId)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const convos = (data ?? []) as Conversation[];
+  if (convos.length === 0) return [];
+
+  const requesterIds = Array.from(new Set(convos.map((c) => c.participant_a)));
+  const [{ data: profiles }, { data: unreadRows }] = await Promise.all([
+    supabase.from("profiles").select("*").in("id", requesterIds),
+    supabase
+      .from("messages")
+      .select("conversation_id,sender_id")
+      .in("conversation_id", convos.map((c) => c.id))
+      .is("read_at", null),
+  ]);
+  const profileMap: Record<string, Profile> = {};
+  (profiles ?? []).forEach((p) => (profileMap[(p as Profile).id] = p as Profile));
+  const requesterByConversation: Record<string, string> = {};
+  convos.forEach((c) => {
+    requesterByConversation[c.id] = c.participant_a;
+  });
+  const unread: Record<string, number> = {};
+  (unreadRows ?? []).forEach((r) => {
+    const row = r as { conversation_id: string; sender_id: string };
+    if (row.sender_id === requesterByConversation[row.conversation_id]) {
+      unread[row.conversation_id] = (unread[row.conversation_id] ?? 0) + 1;
+    }
+  });
+
+  return convos.map((c) => ({
+    ...c,
+    requester: profileMap[c.participant_a] ?? null,
+    unread: unread[c.id] ?? 0,
+  }));
+}
+
+export async function listOrgInboxMessages(conversationId: string): Promise<Message[]> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as Message[];
+}
+
+export async function sendOrgInboxMessage(
+  conversationId: string,
+  senderId: string,
+  body: string,
+): Promise<Message> {
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({ conversation_id: conversationId, sender_id: senderId, body: body.trim() })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Message;
 }
 
 // ---------------------------------------------------------------------------

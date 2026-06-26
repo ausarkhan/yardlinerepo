@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Users2, Plus, CalendarPlus, Pencil, Activity, ExternalLink, FileText } from "lucide-react";
+import { Users2, Plus, CalendarPlus, Pencil, Activity, ExternalLink, FileText, Inbox } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +12,7 @@ import { MemberManageControl } from "@/components/organizations/MemberManageCont
 import { JoinRequestList } from "@/components/organizations/JoinRequestList";
 import { AnnouncementList } from "@/components/organizations/AnnouncementList";
 import { PostAnnouncementDialog } from "@/components/organizations/PostAnnouncementDialog";
+import { OrgInbox } from "@/components/organizations/OrgInbox";
 import { RoleBadge } from "@/components/organizations/RoleBadge";
 import { OrgBudgetPanel } from "@/components/budget/OrgBudgetPanel";
 import { useMyMemberships, useOrgActivity, useOrgEvents } from "@/hooks/useOrganizations";
@@ -37,7 +38,8 @@ export default function OrgDashboard() {
   const role = selected?.role;
   const officer = isOfficer(role);
   const approver = isApprover(role);
-  const budgetManager = canManageBudget(role);
+  const verified = selected?.organization?.verification_level === "verified";
+  const budgetManager = canManageBudget(role) && verified;
   const leader = isLeader(role);
 
   const activity = useOrgActivity(selectedId ?? undefined, !!selected);
@@ -145,11 +147,13 @@ export default function OrgDashboard() {
               </Button>
             ) : null}
             {officer ? <PostAnnouncementDialog orgId={selected.organization_id} /> : null}
-            {budgetManager ? (
+            {canManageBudget(role) ? (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => navigate(`/budget-requests/new?org=${selected.organization_id}`)}
+                disabled={!verified}
+                title={!verified ? "Only verified organizations can submit budget requests." : undefined}
               >
                 <FileText className="h-4 w-4" />
                 Budget request
@@ -157,14 +161,14 @@ export default function OrgDashboard() {
             ) : null}
           </div>
 
-          <Tabs defaultValue="overview">
+          <Tabs defaultValue="announcements">
             <TabsList className="mb-6 flex-wrap">
               <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="announcements">Announcements</TabsTrigger>
+              {approver ? <TabsTrigger value="inbox">Inbox</TabsTrigger> : null}
               <TabsTrigger value="events">Events</TabsTrigger>
               <TabsTrigger value="members">Members</TabsTrigger>
               <TabsTrigger value="budget">Budget</TabsTrigger>
-              {approver ? <TabsTrigger value="requests">Requests</TabsTrigger> : null}
-              <TabsTrigger value="announcements">Announcements</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
@@ -240,37 +244,66 @@ export default function OrgDashboard() {
             </TabsContent>
 
             <TabsContent value="members">
-              <MemberList
-                orgId={selected.organization_id}
-                renderAction={
-                  officer
-                    ? (member) => (
-                        <MemberManageControl
-                          orgId={selected.organization_id}
-                          member={member}
-                          viewerRole={role}
-                          selfId={me}
-                        />
-                      )
-                    : undefined
-                }
-              />
+              <div className="space-y-6">
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h2 className="font-heading text-lg font-bold">Members</h2>
+                    <span className="text-sm text-muted-foreground">{selected.organization?.member_count ?? 0} active</span>
+                  </div>
+                  <MemberList
+                    orgId={selected.organization_id}
+                    renderAction={
+                      leader
+                        ? (member) => (
+                            <MemberManageControl
+                              orgId={selected.organization_id}
+                              member={member}
+                              viewerRole={role}
+                              selfId={me}
+                            />
+                          )
+                        : undefined
+                    }
+                  />
+                </div>
+                {approver ? (
+                  <div>
+                    <h2 className="mb-3 font-heading text-lg font-bold">Pending join requests</h2>
+                    <JoinRequestList orgId={selected.organization_id} canApprove={approver} />
+                  </div>
+                ) : null}
+              </div>
             </TabsContent>
 
             <TabsContent value="budget">
-              <OrgBudgetPanel orgId={selected.organization_id} canCreate={budgetManager} />
+              {!verified ? (
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <h2 className="font-heading text-lg font-bold">Budget requests require verification</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Community organizations can build membership, host events, post announcements, and use the inbox. Verified organizations can additionally submit budget requests.
+                  </p>
+                </div>
+              ) : (
+                <OrgBudgetPanel orgId={selected.organization_id} canCreate={budgetManager} />
+              )}
             </TabsContent>
-
-            {approver ? (
-              <TabsContent value="requests">
-                <JoinRequestList orgId={selected.organization_id} canApprove={approver} />
-              </TabsContent>
-            ) : null}
 
             <TabsContent value="announcements" className="space-y-4">
               {officer ? <PostAnnouncementDialog orgId={selected.organization_id} /> : null}
               <AnnouncementList orgId={selected.organization_id} />
             </TabsContent>
+
+            {approver ? (
+              <TabsContent value="inbox" className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Inbox className="h-4 w-4 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    Shared organization messages stay with the organization as roles change.
+                  </p>
+                </div>
+                <OrgInbox orgId={selected.organization_id} canReply={approver} />
+              </TabsContent>
+            ) : null}
           </Tabs>
         </>
       )}

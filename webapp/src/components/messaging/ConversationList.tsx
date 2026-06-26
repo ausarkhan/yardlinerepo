@@ -41,7 +41,8 @@ export function ConversationList({ conversations, isLoading, activeId }: Convers
   return (
     <ul className="divide-y divide-border">
       {conversations.map((c) => {
-        const name = c.other?.name?.trim() || "YardLine member";
+        const name = c.org?.name?.trim() || c.other?.name?.trim() || "YardLine member";
+        const avatar = c.org?.logo || c.other?.avatar;
         const mine = c.last_sender_id === me;
         return (
           <li key={c.id}>
@@ -53,7 +54,7 @@ export function ConversationList({ conversations, isLoading, activeId }: Convers
               )}
             >
               <Avatar className="h-11 w-11 shrink-0">
-                <AvatarImage src={avatarUrl(c.other?.avatar)} alt={name} />
+                <AvatarImage src={avatarUrl(avatar)} alt={name} />
                 <AvatarFallback className="bg-secondary text-xs font-semibold text-secondary-foreground">
                   {initials(name)}
                 </AvatarFallback>

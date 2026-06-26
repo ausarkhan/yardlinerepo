@@ -30,19 +30,18 @@ interface MemberManageControlProps {
   selfId: string | undefined;
 }
 
-// Role reassignment + removal. Only LEADERS (president/admin) may change roles to
-// or from officer/president (manage officers); regular officers can manage plain
-// members only. The president row can't be demoted from here.
+// Role reassignment + removal. Presidents/admins manage member roles; the last
+// president cannot be removed or demoted.
 export function MemberManageControl({ orgId, member, viewerRole, selfId }: MemberManageControlProps) {
   const { setRole, removeMember } = useOrgActions(orgId);
   const leader = isLeader(viewerRole);
   const isSelf = member.user_id === selfId;
   const isPresident = member.role === "president";
 
-  // A non-leader officer may only manage plain members; leaders manage everyone
-  // except they can't strip the president here.
-  const canManage = (leader ? !isPresident : member.role === "member") && !isSelf;
-  const roleChoices: OrgRole[] = leader ? ASSIGNABLE_ROLES : (["member", "officer"] as OrgRole[]);
+  const canManage = leader && !isSelf;
+  const roleChoices: OrgRole[] = isPresident
+    ? ["president"]
+    : ASSIGNABLE_ROLES;
 
   if (!canManage) return null;
 
@@ -52,7 +51,7 @@ export function MemberManageControl({ orgId, member, viewerRole, selfId }: Membe
         value={member.role}
         onValueChange={(v) =>
           setRole.mutate(
-            { memberId: member.id, role: v as OrgRole },
+            { member, role: v as OrgRole },
             {
               onSuccess: () => toast.success(`Role updated to ${ORG_ROLE_LABELS[v as OrgRole]}.`),
               onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't update role."),
@@ -74,7 +73,13 @@ export function MemberManageControl({ orgId, member, viewerRole, selfId }: Membe
 
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" aria-label="Remove member">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-destructive"
+            aria-label="Remove member"
+            disabled={isPresident}
+          >
             <UserMinus className="h-4 w-4" />
           </Button>
         </AlertDialogTrigger>
@@ -91,7 +96,7 @@ export function MemberManageControl({ orgId, member, viewerRole, selfId }: Membe
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() =>
                 removeMember.mutate(
-                  { memberId: member.id },
+                  { member },
                   {
                     onSuccess: () => toast.success("Member removed."),
                     onError: (e) => toast.error(e instanceof Error ? e.message : "Couldn't remove."),
