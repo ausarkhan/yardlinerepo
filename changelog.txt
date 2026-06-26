@@ -1,3 +1,19 @@
+YardLine Web — Live Organization Engagement QA
+
+- Created LIVE_ORG_ENGAGEMENT_QA_REPORT.md with live production QA evidence for the
+  organization lifecycle after the engagement update: org creation, president seeding,
+  announcements, org events, membership policies, join requests, shared org inbox,
+  member management, My Organizations data, budget gating, uploads, reviews, CORS,
+  health, notifications, admin access context, and Stripe test-mode checkout.
+- Added supabase/migrations/0010_org_engagement_qa_fixes.sql for live QA defects:
+  closed organizations accepting direct join requests, malformed organization inbox
+  conversations, non-admin self-verification guardrails, and verified-org budget
+  request create RLS refresh.
+- Remaining blocker: apply migration 0010 manually in Supabase and re-run the closed
+  join, invalid inbox, and verified budget checks before broader user testing.
+- Verification passed: webapp build, webapp lint (warnings only).
+- Changes made by agent 2026-06-26
+
 YardLine Web — Organization Engagement
 
 - Added organization membership policies with open, approval-required, and closed request flows,
