@@ -14,6 +14,10 @@ build/
 .next/
 .vercel/
 .cache/
+webapp/test-results/
+webapp/playwright-report/
+webapp/playwright-live-commerce-report/
+webapp/playwright/.auth/
 
 # logs
 *.log
