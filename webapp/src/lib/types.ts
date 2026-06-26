@@ -201,7 +201,16 @@ export type NotificationType =
   | "org_join_denied"
   | "org_announcement"
   | "org_role_assigned"
-  | "org_event_created";
+  | "org_event_created"
+  // Phase 7 — budget requests
+  | "budget_advisor_review_needed"
+  | "budget_admin_review_needed"
+  | "budget_request_changes_requested"
+  | "budget_request_approved"
+  | "budget_request_partially_approved"
+  | "budget_request_denied"
+  | "budget_request_paid"
+  | "budget_comment_added";
 
 export interface Notification {
   id: string;
@@ -295,5 +304,109 @@ export interface OrgActivity {
   actor_id: string | null;
   action: string;
   metadata: Record<string, unknown> | null;
+  created_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 read models (budget requests and campus funding workflow).
+// ---------------------------------------------------------------------------
+
+export type BudgetRequestStatus =
+  | "draft"
+  | "submitted"
+  | "advisor_review"
+  | "admin_review"
+  | "changes_requested"
+  | "approved"
+  | "partially_approved"
+  | "denied"
+  | "cancelled"
+  | "paid"
+  | "closed";
+
+export type BudgetFundingCategory =
+  | "event_supplies"
+  | "food_catering"
+  | "venue"
+  | "travel"
+  | "speaker_performer"
+  | "marketing"
+  | "equipment"
+  | "security"
+  | "decorations"
+  | "printing"
+  | "other";
+
+export interface BudgetRequest {
+  id: string;
+  organization_id: string;
+  title: string;
+  description: string | null;
+  linked_event_id: string | null;
+  amount_requested_cents: number;
+  amount_approved_cents: number | null;
+  needed_by_date: string | null;
+  category: BudgetFundingCategory | string;
+  purpose: string | null;
+  vendor_name: string | null;
+  vendor_email: string | null;
+  vendor_phone: string | null;
+  vendor_website: string | null;
+  advisor_name: string | null;
+  advisor_email: string | null;
+  status: BudgetRequestStatus | string;
+  admin_notes: string | null;
+  created_by: string;
+  submitted_at: string | null;
+  approved_at: string | null;
+  paid_at: string | null;
+  closed_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface BudgetRequestLineItem {
+  id: string;
+  budget_request_id: string;
+  item_name: string;
+  description: string | null;
+  quantity: number;
+  unit_cost_cents: number;
+  total_cost_cents: number;
+  vendor: string | null;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface BudgetRequestAttachment {
+  id: string;
+  budget_request_id: string;
+  uploaded_by: string;
+  file_name: string;
+  file_path: string;
+  file_type: string | null;
+  file_size: number | null;
+  document_type: string | null;
+  created_at: string | null;
+}
+
+export interface BudgetRequestComment {
+  id: string;
+  budget_request_id: string;
+  actor_id: string;
+  body: string;
+  visibility: "organization" | "advisor_admin" | "admin" | string;
+  created_at: string | null;
+}
+
+export interface BudgetRequestDecision {
+  id: string;
+  budget_request_id: string;
+  actor_id: string | null;
+  previous_status: string | null;
+  new_status: string;
+  amount_approved_cents: number | null;
+  reason: string | null;
   created_at: string | null;
 }

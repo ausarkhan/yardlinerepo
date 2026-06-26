@@ -1,3 +1,20 @@
+YardLine Web — Phase 7: Budget Requests and Campus Funding Workflow
+
+- Added Phase 7 database migration 0006_phase7_budget_requests.sql for budget_requests,
+  line items, attachments, comments, and decisions; migration is guarded/idempotent and
+  uses text-safe auth comparisons for production profiles.id.
+- Added the budget-request-attachments Supabase Storage bucket metadata and storage RLS
+  policies for request-scoped uploads/downloads.
+- Added workflow helpers for submit, advisor/admin review, approval, partial approval,
+  denial, changes requested, paid, and closed statuses; decisions and org activity are logged.
+- Added /budget-requests, /budget-requests/new, /budget-requests/:id,
+  /org-dashboard/budget, and /admin/budget-requests.
+- Integrated Budget into the existing org dashboard and admin dashboard, with summary metrics,
+  filters, CSV finance export, comments, attachment upload, and decision history.
+- Financial boundary preserved: YardLine tracks approvals and documentation only; no ACH,
+  Stripe payout, bank transfer, or university accounting integration added.
+- Changes made by agent 2026-06-26
+
 YardLine Web — Phase 1 Foundation
 
 - Reused existing Supabase backend (8 tables) without schema changes; inspected via REST.
