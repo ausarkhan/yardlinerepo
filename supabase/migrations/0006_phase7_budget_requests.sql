@@ -337,33 +337,46 @@ create or replace function public.budget_can_edit(req uuid) returns boolean
   );
 $$;
 
-do $$ begin
-  create policy "budget attachments: authenticated upload" on storage.objects
-    for insert to authenticated
-    with check (
-      bucket_id = 'budget-request-attachments'
-      and exists (
-        select 1
-          from budget_requests br
-         where br.id::text = split_part(name, '/', 1)
-           and public.budget_can_edit(br.id)
-      )
-    );
-exception when duplicate_object then null; end $$;
+create or replace function public.budget_can_attach(req uuid) returns boolean
+  language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1
+      from budget_requests br
+     where br.id = req
+       and br.status not in ('cancelled', 'closed')
+       and (
+         public.is_admin()
+         or br.created_by = auth.uid()::text
+         or public.budget_can_submit(br.organization_id)
+       )
+  );
+$$;
 
-do $$ begin
-  create policy "budget attachments: request viewers read" on storage.objects
-    for select to authenticated
-    using (
-      bucket_id = 'budget-request-attachments'
-      and exists (
-        select 1
-          from budget_requests br
-         where br.id::text = split_part(name, '/', 1)
-           and public.budget_can_view(br.id)
-      )
-    );
-exception when duplicate_object then null; end $$;
+drop policy if exists "budget attachments: authenticated upload" on storage.objects;
+create policy "budget attachments: authenticated upload" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'budget-request-attachments'
+    and exists (
+      select 1
+        from budget_requests br
+       where br.id::text = split_part(name, '/', 1)
+         and public.budget_can_attach(br.id)
+    )
+  );
+
+drop policy if exists "budget attachments: request viewers read" on storage.objects;
+create policy "budget attachments: request viewers read" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'budget-request-attachments'
+    and exists (
+      select 1
+        from budget_requests br
+       where br.id::text = split_part(name, '/', 1)
+         and public.budget_can_view(br.id)
+    )
+  );
 
 -- ===========================================================================
 -- 5. RLS
@@ -415,7 +428,7 @@ drop policy if exists "budget attachments: insert" on budget_request_attachments
 create policy "budget attachments: insert" on budget_request_attachments
   for insert with check (
     uploaded_by = auth.uid()::text
-    and public.budget_can_edit(budget_request_id)
+    and public.budget_can_attach(budget_request_id)
   );
 
 drop policy if exists "budget comments: view" on budget_request_comments;

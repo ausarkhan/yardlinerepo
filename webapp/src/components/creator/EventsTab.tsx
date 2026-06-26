@@ -27,7 +27,7 @@ export function EventsTab({ onActivatePayments }: EventsTabProps) {
   const userId = useAuthStore((s) => s.user?.id);
   const qc = useQueryClient();
 
-  const events = data?.events ?? [];
+  const events = useMemo(() => data?.events ?? [], [data?.events]);
 
   // Minted (paid) ticket counts per event — graceful when the table is absent.
   const { data: mintedCounts } = useQuery({

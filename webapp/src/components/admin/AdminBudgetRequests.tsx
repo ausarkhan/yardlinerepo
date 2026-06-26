@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, FileText } from "lucide-react";
+import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BudgetRequestList } from "@/components/budget/BudgetRequestList";
@@ -96,11 +96,6 @@ export function AdminBudgetRequests() {
 
       <BudgetSummaryCards requests={requests.data ?? []} admin />
       <BudgetRequestList requests={requests.data} isLoading={requests.isLoading} />
-      {(requests.data ?? []).length === 0 && !requests.isLoading ? (
-        <div className="hidden">
-          <FileText />
-        </div>
-      ) : null}
     </div>
   );
 }
