@@ -60,9 +60,14 @@ export function JoinRequestList({ orgId, canApprove }: { orgId: string; canAppro
             </Avatar>
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">{name}</p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="line-clamp-2 text-xs text-muted-foreground">
                 {r.message ? r.message : `Requested ${formatRelativeTime(r.created_at)}`}
               </p>
+              {r.classification_year || r.major || r.interests ? (
+                <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+                  {[r.classification_year, r.major, r.interests].filter(Boolean).join(" · ")}
+                </p>
+              ) : null}
             </div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => decide(r, false)} disabled={decideRequest.isPending}>

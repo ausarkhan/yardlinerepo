@@ -1,3 +1,20 @@
+YardLine Web — Organization Engagement
+
+- Added organization membership policies with open, approval-required, and closed request flows,
+  including richer join-request context fields for classification/year, major, and interests.
+- Added organization communication tabs for Announcements, Inbox, Events, and Members on profile
+  and dashboard surfaces.
+- Added a shared organization inbox using the existing conversations/messages infrastructure so
+  organization leaders can reply to organization-linked conversations without tying ownership to
+  one officer.
+- Improved organization member management with member counts, role badges, pending requests,
+  leader-only promotion/removal controls, and guardrails preventing zero active presidents.
+- Added a simple My Organizations feed with joined orgs, recent announcements, and pending
+  requests; verified organizations are now distinguished for budget access and badges.
+- Shipped supabase/migrations/0009_organization_engagement.sql for the additive schema/RLS changes.
+- Verification passed: webapp build, webapp lint (warnings only), backend typecheck.
+- Changes made by agent 2026-06-26
+
 YardLine Web — Live Production E2E QA
 
 - Created LIVE_E2E_QA_REPORT.md with live production QA evidence for auth, profile, orgs,

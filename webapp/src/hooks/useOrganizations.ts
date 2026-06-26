@@ -8,21 +8,29 @@ import {
   listMembers,
   myMemberships,
   myMembership,
+  joinOpenOrganization,
   setMemberRole,
   removeMember,
   leaveOrganization,
   requestToJoin,
   myJoinRequest,
+  myPendingJoinRequests,
   listJoinRequests,
   decideJoinRequest,
   listAnnouncements,
+  listAnnouncementsForOrgs,
   postAnnouncement,
   listActivity,
   listOrgEvents,
   upcomingEventCounts,
+  getOrCreateOrgConversation,
+  listOrgInbox,
+  listOrgInboxMessages,
+  sendOrgInboxMessage,
   type OrgInput,
+  type JoinRequestInput,
 } from "@/lib/organizations";
-import type { OrgCategory, OrgRole, OrgJoinRequest, OrgAnnouncementVisibility } from "@/lib/types";
+import type { OrgCategory, OrgRole, OrgJoinRequest, OrgAnnouncementVisibility, OrganizationMember } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Discovery + profile
@@ -90,6 +98,15 @@ export function useMyJoinRequest(orgId: string | undefined) {
   });
 }
 
+export function useMyPendingJoinRequests() {
+  const userId = useAuthStore((s) => s.user?.id);
+  return useQuery({
+    queryKey: ["my-pending-join-requests", userId],
+    enabled: !!userId,
+    queryFn: () => myPendingJoinRequests(userId!),
+  });
+}
+
 export function useJoinRequests(orgId: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: ["org-join-requests", orgId],
@@ -109,6 +126,15 @@ export function useAnnouncements(orgId: string | undefined) {
   });
 }
 
+export function useMyOrgAnnouncements(orgIds: string[]) {
+  const key = orgIds.slice().sort().join(",");
+  return useQuery({
+    queryKey: ["my-org-announcements", key],
+    enabled: orgIds.length > 0,
+    queryFn: () => listAnnouncementsForOrgs(orgIds),
+  });
+}
+
 export function useOrgActivity(orgId: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: ["org-activity", orgId],
@@ -122,6 +148,22 @@ export function useOrgEvents(orgId: string | undefined) {
     queryKey: ["org-events", orgId],
     enabled: !!orgId,
     queryFn: () => listOrgEvents(orgId!),
+  });
+}
+
+export function useOrgInbox(orgId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["org-inbox", orgId],
+    enabled: !!orgId && enabled,
+    queryFn: () => listOrgInbox(orgId!),
+  });
+}
+
+export function useOrgInboxMessages(conversationId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["org-inbox-messages", conversationId],
+    enabled: !!conversationId && enabled,
+    queryFn: () => listOrgInboxMessages(conversationId!),
   });
 }
 
@@ -139,6 +181,7 @@ export function useOrgActions(orgId?: string) {
     qc.invalidateQueries({ queryKey: ["my-memberships", userId] });
     qc.invalidateQueries({ queryKey: ["my-org-role", orgId, userId] });
     qc.invalidateQueries({ queryKey: ["my-join-request", orgId, userId] });
+    qc.invalidateQueries({ queryKey: ["my-pending-join-requests", userId] });
     qc.invalidateQueries({ queryKey: ["org-announcements", orgId] });
   };
   const requireUser = () => {
@@ -155,9 +198,13 @@ export function useOrgActions(orgId?: string) {
       mutationFn: (v: { id: string; input: Partial<OrgInput> }) => updateOrganization(v.id, v.input),
       onSuccess: invalidate,
     }),
+    joinOpen: useMutation({
+      mutationFn: (v: { orgId: string }) => joinOpenOrganization(v.orgId, requireUser()),
+      onSuccess: invalidate,
+    }),
     join: useMutation({
-      mutationFn: (v: { orgId: string; message?: string }) =>
-        requestToJoin(v.orgId, requireUser(), v.message),
+      mutationFn: (v: { orgId: string; input: JoinRequestInput }) =>
+        requestToJoin(v.orgId, requireUser(), v.input),
       onSuccess: invalidate,
     }),
     leave: useMutation({
@@ -170,17 +217,33 @@ export function useOrgActions(orgId?: string) {
       onSuccess: invalidate,
     }),
     setRole: useMutation({
-      mutationFn: (v: { memberId: string; role: OrgRole }) => setMemberRole(v.memberId, v.role),
+      mutationFn: (v: { member: OrganizationMember; role: OrgRole }) => setMemberRole(v.member, v.role),
       onSuccess: invalidate,
     }),
     removeMember: useMutation({
-      mutationFn: (v: { memberId: string }) => removeMember(v.memberId),
+      mutationFn: (v: { member: OrganizationMember }) => removeMember(v.member),
       onSuccess: invalidate,
     }),
     announce: useMutation({
       mutationFn: (v: { title: string; body: string; visibility: OrgAnnouncementVisibility }) =>
         postAnnouncement({ orgId: orgId!, authorId: requireUser(), ...v }),
       onSuccess: invalidate,
+    }),
+    startOrgConversation: useMutation({
+      mutationFn: (v: { orgId: string; initialMessage?: string }) =>
+        getOrCreateOrgConversation({ orgId: v.orgId, userId: requireUser(), initialMessage: v.initialMessage }),
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ["org-inbox", orgId] });
+        qc.invalidateQueries({ queryKey: ["conversations", userId] });
+      },
+    }),
+    sendOrgMessage: useMutation({
+      mutationFn: (v: { conversationId: string; body: string }) =>
+        sendOrgInboxMessage(v.conversationId, requireUser(), v.body),
+      onSuccess: (_msg, vars) => {
+        qc.invalidateQueries({ queryKey: ["org-inbox", orgId] });
+        qc.invalidateQueries({ queryKey: ["org-inbox-messages", vars.conversationId] });
+      },
     }),
   };
 }

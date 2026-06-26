@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Users2, Mail, Globe, Instagram, GraduationCap, Settings2, CalendarDays } from "lucide-react";
+import { ArrowLeft, Users2, Mail, Globe, Instagram, GraduationCap, Settings2, CalendarDays, BadgeCheck } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { JoinButton } from "@/components/organizations/JoinButton";
 import { MemberList } from "@/components/organizations/MemberList";
 import { AnnouncementList } from "@/components/organizations/AnnouncementList";
 import { RoleBadge } from "@/components/organizations/RoleBadge";
+import { MessageOrganizationDialog } from "@/components/organizations/MessageOrganizationDialog";
 import { ReportButton } from "@/components/reports/ReportButton";
 import { useOrganization, useMyOrgRole, useOrgEvents } from "@/hooks/useOrganizations";
 import { orgCategoryLabel, isOfficer } from "@/lib/organizations";
@@ -82,6 +83,12 @@ export default function OrganizationDetail() {
               <Badge variant="secondary" className="border-0">
                 {orgCategoryLabel(org.category)}
               </Badge>
+              {org.verification_level === "verified" ? (
+                <Badge className="gap-1 border-0 bg-green/15 text-green">
+                  <BadgeCheck className="h-3.5 w-3.5" />
+                  Verified
+                </Badge>
+              ) : null}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {org.member_count ?? 0} member{(org.member_count ?? 0) === 1 ? "" : "s"}
@@ -96,6 +103,7 @@ export default function OrganizationDetail() {
                 Manage
               </Button>
             ) : null}
+            <MessageOrganizationDialog org={org} />
             <JoinButton org={org} />
             <ReportButton targetType="user" targetId={org.created_by} iconOnly />
           </div>
@@ -104,13 +112,30 @@ export default function OrganizationDetail() {
 
       {/* Body */}
       <div className="mt-8 px-2 md:px-6">
-        <Tabs defaultValue="about">
+        <Tabs defaultValue="announcements">
           <TabsList className="mb-6 flex-wrap">
-            <TabsTrigger value="about">About</TabsTrigger>
+            <TabsTrigger value="announcements">Announcements</TabsTrigger>
+            <TabsTrigger value="inbox">Inbox</TabsTrigger>
             <TabsTrigger value="events">Events ({(events ?? []).length})</TabsTrigger>
             <TabsTrigger value="members">Members ({org.member_count ?? 0})</TabsTrigger>
-            <TabsTrigger value="announcements">Announcements</TabsTrigger>
+            <TabsTrigger value="about">About</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="announcements">
+            <AnnouncementList orgId={org.id} />
+          </TabsContent>
+
+          <TabsContent value="inbox">
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <h2 className="font-heading text-lg font-bold">Message the organization</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Questions about joining, sponsorships, collaborations, events, and campus partnerships go to the shared organization inbox.
+              </p>
+              <div className="mt-4">
+                <MessageOrganizationDialog org={org} />
+              </div>
+            </div>
+          </TabsContent>
 
           <TabsContent value="about" className="space-y-6">
             {org.description ? (
@@ -146,9 +171,6 @@ export default function OrganizationDetail() {
             <MemberList orgId={org.id} />
           </TabsContent>
 
-          <TabsContent value="announcements">
-            <AnnouncementList orgId={org.id} />
-          </TabsContent>
         </Tabs>
       </div>
     </div>

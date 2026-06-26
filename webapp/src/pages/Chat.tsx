@@ -12,6 +12,7 @@ import { otherParticipant } from "@/lib/messaging";
 import { supabase } from "@/lib/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { avatarUrl, initials } from "@/lib/helpers";
+import { useOrganization } from "@/hooks/useOrganizations";
 import { toast } from "sonner";
 
 export default function Chat() {
@@ -22,11 +23,13 @@ export default function Chat() {
 
   const convo = meta.data;
   const otherId = convo && me ? otherParticipant(convo, me) : undefined;
+  const orgId = convo?.context_type === "organization" ? convo.context_id ?? undefined : undefined;
+  const { data: org } = useOrganization(orgId);
 
   // Profile of the other participant for the header.
   const other = useQuery({
     queryKey: ["profile", otherId],
-    enabled: !!otherId,
+    enabled: !!otherId && !orgId,
     queryFn: async () => {
       const { data } = await supabase.from("profiles").select("*").eq("id", otherId).maybeSingle();
       return data as { id: string; name: string | null; avatar: string | null; handle: string | null } | null;
@@ -39,7 +42,8 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, messages.data?.length]);
 
-  const name = other.data?.name?.trim() || "YardLine member";
+  const name = org?.name?.trim() || other.data?.name?.trim() || "YardLine member";
+  const image = org?.logo || other.data?.avatar;
 
   return (
     <div className="container max-w-2xl py-4 md:py-6">
@@ -55,18 +59,20 @@ export default function Chat() {
           ) : (
             <>
               <Avatar className="h-10 w-10">
-                <AvatarImage src={avatarUrl(other.data?.avatar)} alt={name} />
+                <AvatarImage src={avatarUrl(image)} alt={name} />
                 <AvatarFallback className="bg-secondary text-xs font-semibold text-secondary-foreground">
                   {initials(name)}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold leading-tight">{name}</p>
-                {other.data?.handle ? (
+                {org ? (
+                  <p className="truncate text-xs text-muted-foreground">Organization inbox</p>
+                ) : other.data?.handle ? (
                   <p className="truncate text-xs text-muted-foreground">{other.data.handle}</p>
                 ) : null}
               </div>
-              {otherId ? (
+              {otherId && !org ? (
                 <ReportButton targetType="user" targetId={otherId} variant="ghost" size="icon" iconOnly />
               ) : null}
             </>

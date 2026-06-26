@@ -120,7 +120,7 @@ export interface Review {
 // Phase 5 read models (tables created by migration 0004).
 // ---------------------------------------------------------------------------
 
-export type ConversationContext = "direct" | "provider" | "booking" | "event";
+export type ConversationContext = "direct" | "provider" | "booking" | "event" | "organization";
 
 export interface Conversation {
   id: string;
@@ -262,6 +262,8 @@ export interface Organization {
   advisor_id: string | null;
   department: string | null;
   status: OrgStatus | string;
+  membership_policy?: "open" | "approval_required" | "closed" | string;
+  verification_level?: "community" | "verified" | string;
   member_count: number | null;
   created_by: string;
   created_at: string | null;
@@ -283,6 +285,9 @@ export interface OrgJoinRequest {
   organization_id: string;
   user_id: string;
   message: string | null;
+  classification_year?: string | null;
+  major?: string | null;
+  interests?: string | null;
   status: "pending" | "approved" | "denied" | string;
   decided_by: string | null;
   decided_at: string | null;
