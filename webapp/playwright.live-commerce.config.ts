@@ -14,7 +14,7 @@ export default defineConfig({
   use: {
     baseURL: process.env.YARDLINE_LIVE_URL ?? "https://yardlinerepo.vercel.app",
     browserName: "chromium",
-    headless: false,
+    headless: process.env.PLAYWRIGHT_HEADED === "1" ? false : true,
     actionTimeout: 30_000,
     navigationTimeout: 60_000,
     screenshot: "only-on-failure",

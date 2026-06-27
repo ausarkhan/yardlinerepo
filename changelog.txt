@@ -1,3 +1,20 @@
+YardLine Web — Playwright Commerce QA
+
+- Created PLAYWRIGHT_COMMERCE_QA_REPORT.md for the live commerce QA sprint with run
+  commands, artifacts, browser mode notes, pass/fail status, and beta readiness conclusion.
+- Expanded the live Playwright commerce suite to cover OTP auth/session/logout, paid ticket
+  checkout, checkout cancellation, free RSVP duplicate blocking, service booking accept/decline,
+  backend negative requests, and accept idempotency checks.
+- Added Playwright diagnostics for console errors, network failures, bad HTTP responses,
+  screenshots, traces, and videos.
+- Repaired OTP test handling for the deployed auto-submit OTP component and added stdin,
+  env-var, and /tmp file OTP input support for live runs.
+- Verification passed: Playwright test listing, webapp build, webapp lint (warnings only),
+  backend typecheck, backend health check.
+- Live commerce execution remains blocked before full payment validation because repeated
+  OTP attempts stopped reaching /verify; final conclusion remains NOT READY FOR COMMERCE BETA.
+- Changes made by agent 2026-06-27
+
 YardLine Web — Live Commerce Validation
 
 - Created LIVE_COMMERCE_VALIDATION_REPORT.md with live production evidence for creator

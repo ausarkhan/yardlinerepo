@@ -10,7 +10,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:commerce:live": "playwright test --config=playwright.live-commerce.config.ts --headed"
+    "test:commerce:live": "playwright test --config=playwright.live-commerce.config.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
