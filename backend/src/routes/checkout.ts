@@ -18,6 +18,11 @@ function notReady(message: string): EventCheckoutResponse {
   return { url: null, session_id: null, order_id: null, message };
 }
 
+function normalizeTime(value: string): string {
+  const [hours = "00", minutes = "00"] = value.split(":");
+  return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}:00`;
+}
+
 // Resolve a creator's ACTIVE Connect account (charges enabled). Returns null
 // when the creator hasn't finished onboarding — paid selling stays blocked.
 async function activeConnectAccount(userId: string): Promise<string | null> {
@@ -86,6 +91,42 @@ checkoutRouter.post("/event-session", async (c) => {
     const quantity = priced.reduce((s, p) => s + p.quantity, 0);
     if (quantity <= 0 || fees.total_cents <= 0) {
       return c.json({ error: { message: "Nothing to purchase", code: "bad_request" } }, 400);
+    }
+
+    // Reuse a still-open pending checkout for the same buyer/event/cart. This
+    // protects against rapid repeated clicks creating duplicate sessions/orders.
+    const existingOrders = await sbSelect<{
+      id: string;
+      checkout_session_id: string | null;
+      created_at: string | null;
+    }>(
+      "yardtix_orders",
+      [
+        `event_id=eq.${encodeURIComponent(event_id)}`,
+        `buyer_id=eq.${encodeURIComponent(userId)}`,
+        "payment_status=eq.pending",
+        `quantity=eq.${quantity}`,
+        `total_cents=eq.${fees.total_cents}`,
+        "select=id,checkout_session_id,created_at",
+        "order=created_at.desc",
+        "limit=1",
+      ].join("&"),
+    );
+    const existingOrder = existingOrders[0];
+    if (existingOrder?.checkout_session_id && stripe) {
+      const ageMs = existingOrder.created_at ? Date.now() - Date.parse(existingOrder.created_at) : 0;
+      if (ageMs >= 0 && ageMs < 15 * 60 * 1000) {
+        const existingSession = await stripe.checkout.sessions.retrieve(existingOrder.checkout_session_id);
+        if (existingSession.status === "open" && existingSession.url) {
+          const resp: EventCheckoutResponse = {
+            url: existingSession.url,
+            session_id: existingSession.id,
+            order_id: existingOrder.id,
+            message: null,
+          };
+          return c.json({ data: resp });
+        }
+      }
     }
 
     // Create the pending order first so the webhook can finalize it by id.
@@ -225,9 +266,56 @@ checkoutRouter.post("/booking-intent", async (c) => {
 
     const breakdown = singleBreakdown(price);
     const duration = service.duration ?? 60;
-    const [h, m] = time_start.split(":").map((n) => parseInt(n, 10));
+    const normalizedStart = normalizeTime(time_start);
+    const [h, m] = normalizedStart.split(":").map((n) => parseInt(n, 10));
     const total = Math.min(23 * 60 + 59, (h || 0) * 60 + (m || 0) + duration);
     const time_end = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}:00`;
+
+    // Reuse a recent unresolved intent for the same booking slot. This keeps
+    // rapid repeated booking clicks from creating multiple PaymentIntents.
+    const existingBookings = await sbSelect<{
+      id: string;
+      payment_intent_id: string | null;
+      created_at: string | null;
+    }>(
+      "bookings",
+      [
+        `customer_id=eq.${encodeURIComponent(userId)}`,
+        `provider_id=eq.${encodeURIComponent(provider_user_id)}`,
+        `service_id=eq.${encodeURIComponent(service_id)}`,
+        `date=eq.${encodeURIComponent(date)}`,
+        `time_start=eq.${encodeURIComponent(normalizedStart)}`,
+        "status=eq.pending_provider_review",
+        "payment_status=eq.none",
+        "select=id,payment_intent_id,created_at",
+        "order=created_at.desc",
+        "limit=1",
+      ].join("&"),
+    );
+    const existingBooking = existingBookings[0];
+    if (existingBooking?.payment_intent_id && stripe) {
+      const ageMs = existingBooking.created_at ? Date.now() - Date.parse(existingBooking.created_at) : 0;
+      if (ageMs >= 0 && ageMs < 15 * 60 * 1000) {
+        const existingIntent = await stripe.paymentIntents.retrieve(existingBooking.payment_intent_id);
+        if (
+          existingIntent.client_secret &&
+          ["requires_payment_method", "requires_confirmation", "requires_action", "requires_capture"].includes(
+            existingIntent.status,
+          )
+        ) {
+          const resp: BookingIntentResponse = {
+            booking_id: existingBooking.id,
+            client_secret: existingIntent.client_secret,
+            service_price_cents: breakdown.service_price_cents,
+            platform_fee_cents: breakdown.platform_fee_cents,
+            amount_total: breakdown.amount_total,
+            test_mode: isTestMode(),
+            message: null,
+          };
+          return c.json({ data: resp });
+        }
+      }
+    }
 
     // Create the booking up front in the "awaiting provider" state.
     const bookingRows = await sbInsert<{ id: string }>(
@@ -237,7 +325,7 @@ checkoutRouter.post("/booking-intent", async (c) => {
         provider_id: provider_user_id,
         service_id,
         date,
-        time_start: `${time_start}:00`,
+        time_start: normalizedStart,
         time_end,
         status: "pending_provider_review",
         payment_status: "none",
