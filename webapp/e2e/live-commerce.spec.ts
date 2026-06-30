@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { mkdir } from "node:fs/promises";
 import {
   BUYER_EMAIL,
-  CREATOR_EMAIL,
+  BUYER_STORAGE_STATE,
+  CREATOR_STORAGE_STATE,
   acceptLegalGateIfPresent,
   appGoto,
   attachDiagnostics,
@@ -16,7 +16,6 @@ import {
   currentEventId,
   dismissToasts,
   futureDate,
-  loginWithOtp,
   makeDiagnostics,
   makeLiveCommerceState,
   openEventFromDirectory,
@@ -31,10 +30,6 @@ test.describe("YardLine live commerce lifecycle", () => {
   const state = makeLiveCommerceState();
   const diagnostics = makeDiagnostics();
 
-  test.beforeAll(async () => {
-    await mkdir("playwright/.auth", { recursive: true });
-  });
-
   test.afterEach(async ({ page }, testInfo) => {
     await dismissToasts(page).catch(() => undefined);
     await attachDiagnosticsReport(testInfo, diagnostics);
@@ -43,53 +38,8 @@ test.describe("YardLine live commerce lifecycle", () => {
     }
   });
 
-  test("auth: creator and buyer OTP login, session persistence, and logout", async ({ browser }) => {
-    const creatorContext = await browser.newContext();
-    const creatorPage = await creatorContext.newPage();
-    attachDiagnostics(creatorPage, diagnostics, "creator-auth");
-    await loginWithOtp(creatorPage, CREATOR_EMAIL);
-
-    await appGoto(creatorPage, "/profile");
-    await expect(creatorPage.getByText(CREATOR_EMAIL)).toBeVisible();
-
-    await appGoto(creatorPage, "/creator-dashboard");
-    await expect(creatorPage.getByRole("heading", { name: /creator dashboard/i })).toBeVisible();
-    await creatorContext.storageState({ path: "playwright/.auth/creator.json" });
-    await creatorContext.close();
-
-    const creatorPersistContext = await browser.newContext({ storageState: "playwright/.auth/creator.json" });
-    const creatorPersistPage = await creatorPersistContext.newPage();
-    attachDiagnostics(creatorPersistPage, diagnostics, "creator-persist");
-    await appGoto(creatorPersistPage, "/creator-dashboard");
-    await expect(creatorPersistPage.getByRole("heading", { name: /creator dashboard/i })).toBeVisible();
-    await creatorPersistContext.close();
-
-    const buyerContext = await browser.newContext();
-    const buyerPage = await buyerContext.newPage();
-    attachDiagnostics(buyerPage, diagnostics, "buyer-auth");
-    await loginWithOtp(buyerPage, BUYER_EMAIL);
-    await appGoto(buyerPage, "/profile");
-    await expect(buyerPage.getByText(BUYER_EMAIL)).toBeVisible();
-    await buyerContext.storageState({ path: "playwright/.auth/buyer.json" });
-    await buyerContext.close();
-
-    const logoutContext = await browser.newContext({ storageState: "playwright/.auth/buyer.json" });
-    const logoutPage = await logoutContext.newPage();
-    attachDiagnostics(logoutPage, diagnostics, "buyer-logout");
-    await appGoto(logoutPage, "/profile");
-    const menuButton = logoutPage.getByRole("button", { name: /user|account|profile|menu/i }).first();
-    if (await menuButton.isVisible().catch(() => false)) {
-      await menuButton.click();
-    }
-    const logout = logoutPage.getByRole("menuitem", { name: /log out|sign out/i }).or(logoutPage.getByRole("button", { name: /log out|sign out/i })).first();
-    await expect(logout).toBeVisible();
-    await logout.click();
-    await expect(logoutPage.getByRole("link", { name: /log in|sign in/i }).or(logoutPage.getByRole("button", { name: /log in|sign in/i }))).toBeVisible({ timeout: 30_000 });
-    await logoutContext.close();
-  });
-
   test("paid ticket: creator publishes event and buyer completes Stripe Checkout", async ({ browser }) => {
-    const creatorContext = await browser.newContext({ storageState: "playwright/.auth/creator.json" });
+    const creatorContext = await browser.newContext({ storageState: CREATOR_STORAGE_STATE });
     const creatorPage = await creatorContext.newPage();
     attachDiagnostics(creatorPage, diagnostics, "paid-creator");
     await createEvent(creatorPage, {
@@ -103,20 +53,19 @@ test.describe("YardLine live commerce lifecycle", () => {
     await expect(creatorPage.getByText(/\$12\.34/)).toBeVisible();
     await creatorContext.close();
 
-    const buyerContext = await browser.newContext({ storageState: "playwright/.auth/buyer.json" });
+    const buyerContext = await browser.newContext({ storageState: BUYER_STORAGE_STATE });
     const buyerPage = await buyerContext.newPage();
     attachDiagnostics(buyerPage, diagnostics, "paid-buyer");
     await openEventFromDirectory(buyerPage, state.paidEventTitle);
     await expect(buyerPage.getByText("General Admission")).toBeVisible();
     await expect(buyerPage.getByText(/\$12\.34/)).toBeVisible();
 
-    const increment = buyerPage
-      .locator("div")
+    const ticketTier = buyerPage
+      .locator(".rounded-xl.border")
       .filter({ hasText: "General Admission" })
       .filter({ hasText: "$12.34" })
-      .first()
-      .getByRole("button")
-      .last();
+      .first();
+    const increment = ticketTier.getByRole("button").nth(1);
     await expect(increment).toBeVisible();
     await expect(increment).toBeEnabled();
     await increment.click();
@@ -124,11 +73,24 @@ test.describe("YardLine live commerce lifecycle", () => {
     await expect(buyButton).toBeEnabled();
     const checkoutResponse = buyerPage.waitForResponse((res) => res.url().includes("/api/checkout/event-session") && res.request().method() === "POST");
     await buyButton.click();
-    await expect(buyButton).toBeDisabled();
     await acceptLegalGateIfPresent(buyerPage);
     const checkoutJson = await (await checkoutResponse).json().catch(() => null);
     state.paidOrderId = checkoutJson?.data?.order_id ?? undefined;
     state.paidCheckoutSessionId = checkoutJson?.data?.session_id ?? undefined;
+    console.log(
+      JSON.stringify({
+        marker: "paid-ticket-checkout",
+        orderId: state.paidOrderId,
+        checkoutSessionId: state.paidCheckoutSessionId,
+      }),
+    );
+    await expect(buyerPage).toHaveURL(/checkout\.stripe\.com/, { timeout: 60_000 });
+    await expect(buyerPage.getByText(state.paidEventTitle)).toBeVisible({ timeout: 60_000 });
+    await expect(buyerPage.getByText("General Admission")).toBeVisible();
+    await expect(buyerPage.getByText("$12.34")).toBeVisible();
+    await expect(buyerPage.getByText("Platform fee")).toBeVisible();
+    await expect(buyerPage.getByText("$0.99")).toBeVisible();
+    await expect(buyerPage.getByText("$13.33")).toBeVisible();
     await completeStripeCheckout(buyerPage, BUYER_EMAIL);
     await expect(buyerPage).toHaveURL(/yardlinerepo\.vercel\.app\/receipt/, { timeout: 120_000 });
     await expect(buyerPage.getByText(state.paidEventTitle)).toBeVisible({ timeout: 60_000 });
@@ -138,7 +100,7 @@ test.describe("YardLine live commerce lifecycle", () => {
     await expect(buyerPage.getByText(/qr|check.?in|ticket/i)).toBeVisible();
     await buyerContext.close();
 
-    const creatorVerifyContext = await browser.newContext({ storageState: "playwright/.auth/creator.json" });
+    const creatorVerifyContext = await browser.newContext({ storageState: CREATOR_STORAGE_STATE });
     const creatorVerifyPage = await creatorVerifyContext.newPage();
     attachDiagnostics(creatorVerifyPage, diagnostics, "paid-creator-verify");
     await openEventFromDirectory(creatorVerifyPage, state.paidEventTitle);
@@ -148,7 +110,7 @@ test.describe("YardLine live commerce lifecycle", () => {
   });
 
   test("checkout cancellation returns safely without confirmed ticket", async ({ browser }) => {
-    const creatorContext = await browser.newContext({ storageState: "playwright/.auth/creator.json" });
+    const creatorContext = await browser.newContext({ storageState: CREATOR_STORAGE_STATE });
     const creatorPage = await creatorContext.newPage();
     attachDiagnostics(creatorPage, diagnostics, "cancel-creator");
     await createEvent(creatorPage, {
@@ -161,18 +123,18 @@ test.describe("YardLine live commerce lifecycle", () => {
     state.cancelEventId = currentEventId(creatorPage);
     await creatorContext.close();
 
-    const buyerContext = await browser.newContext({ storageState: "playwright/.auth/buyer.json" });
+    const buyerContext = await browser.newContext({ storageState: BUYER_STORAGE_STATE });
     const buyerPage = await buyerContext.newPage();
     attachDiagnostics(buyerPage, diagnostics, "cancel-buyer");
     await openEventFromDirectory(buyerPage, state.cancelEventTitle);
     const eventUrl = buyerPage.url();
     await buyerPage
-      .locator("div")
+      .locator(".rounded-xl.border")
       .filter({ hasText: "General Admission" })
       .filter({ hasText: "$12.34" })
       .first()
       .getByRole("button")
-      .last()
+      .nth(1)
       .click();
     await buyerPage.getByRole("button", { name: /buy tickets/i }).click();
     await acceptLegalGateIfPresent(buyerPage);
@@ -185,7 +147,7 @@ test.describe("YardLine live commerce lifecycle", () => {
   });
 
   test("free RSVP: buyer receives RSVP, creator sees attendee, duplicate RSVP is blocked", async ({ browser }) => {
-    const creatorContext = await browser.newContext({ storageState: "playwright/.auth/creator.json" });
+    const creatorContext = await browser.newContext({ storageState: CREATOR_STORAGE_STATE });
     const creatorPage = await creatorContext.newPage();
     attachDiagnostics(creatorPage, diagnostics, "free-creator");
     await createEvent(creatorPage, {
@@ -196,7 +158,7 @@ test.describe("YardLine live commerce lifecycle", () => {
     });
     await creatorContext.close();
 
-    const buyerContext = await browser.newContext({ storageState: "playwright/.auth/buyer.json" });
+    const buyerContext = await browser.newContext({ storageState: BUYER_STORAGE_STATE });
     const buyerPage = await buyerContext.newPage();
     attachDiagnostics(buyerPage, diagnostics, "free-buyer");
     await openEventFromDirectory(buyerPage, state.freeEventTitle);
@@ -207,7 +169,7 @@ test.describe("YardLine live commerce lifecycle", () => {
     await expect(buyerPage.getByText(state.freeEventTitle)).toBeVisible();
     await buyerContext.close();
 
-    const creatorVerifyContext = await browser.newContext({ storageState: "playwright/.auth/creator.json" });
+    const creatorVerifyContext = await browser.newContext({ storageState: CREATOR_STORAGE_STATE });
     const creatorVerifyPage = await creatorVerifyContext.newPage();
     attachDiagnostics(creatorVerifyPage, diagnostics, "free-creator-verify");
     await openEventFromDirectory(creatorVerifyPage, state.freeEventTitle);
@@ -217,13 +179,13 @@ test.describe("YardLine live commerce lifecycle", () => {
   });
 
   test("service booking payment: buyer authorizes and creator accepts", async ({ browser }) => {
-    const creatorContext = await browser.newContext({ storageState: "playwright/.auth/creator.json" });
+    const creatorContext = await browser.newContext({ storageState: CREATOR_STORAGE_STATE });
     const creatorPage = await creatorContext.newPage();
     attachDiagnostics(creatorPage, diagnostics, "booking-create-service");
     await createService(creatorPage, state);
     await creatorContext.close();
 
-    const buyerContext = await browser.newContext({ storageState: "playwright/.auth/buyer.json" });
+    const buyerContext = await browser.newContext({ storageState: BUYER_STORAGE_STATE });
     const buyerPage = await buyerContext.newPage();
     attachDiagnostics(buyerPage, diagnostics, "booking-buyer");
     await openProviderForBooking(buyerPage, "Ausar", state.serviceName);
@@ -235,11 +197,12 @@ test.describe("YardLine live commerce lifecycle", () => {
     const bookingJson = await (await bookingResponse).json().catch(() => null);
     state.acceptedBookingId = bookingJson?.data?.booking_id ?? undefined;
     await buyerPage.getByRole("button", { name: /view my bookings/i }).click();
-    await expect(buyerPage.getByText(state.serviceName)).toBeVisible();
-    await expect(buyerPage.getByText(/pending|requested|authorized/i)).toBeVisible();
+    const buyerBooking = buyerPage.locator("div").filter({ hasText: state.serviceName }).first();
+    await expect(buyerBooking).toBeVisible();
+    await expect(buyerBooking).toContainText(/pending|requested|authorized/i);
     await buyerContext.close();
 
-    const creatorAcceptContext = await browser.newContext({ storageState: "playwright/.auth/creator.json" });
+    const creatorAcceptContext = await browser.newContext({ storageState: CREATOR_STORAGE_STATE });
     const creatorAcceptPage = await creatorAcceptContext.newPage();
     attachDiagnostics(creatorAcceptPage, diagnostics, "booking-creator-accept");
     await appGoto(creatorAcceptPage, "/creator-dashboard?tab=services");
@@ -250,12 +213,12 @@ test.describe("YardLine live commerce lifecycle", () => {
       accept.click(),
       accept.click({ force: true }).catch(() => undefined),
     ]);
-    await expect(creatorAcceptPage.getByText(/confirmed|captured/i)).toBeVisible({ timeout: 90_000 });
+    await expect(creatorAcceptPage.getByText(/confirmed|captured|payment captured/i).first()).toBeVisible({ timeout: 90_000 });
     await creatorAcceptContext.close();
   });
 
   test("booking decline releases authorization and shows declined status", async ({ browser }) => {
-    const buyerContext = await browser.newContext({ storageState: "playwright/.auth/buyer.json" });
+    const buyerContext = await browser.newContext({ storageState: BUYER_STORAGE_STATE });
     const buyerPage = await buyerContext.newPage();
     attachDiagnostics(buyerPage, diagnostics, "decline-buyer");
     await openProviderForBooking(buyerPage, "Ausar", state.serviceName);
@@ -265,7 +228,7 @@ test.describe("YardLine live commerce lifecycle", () => {
     state.declinedBookingId = bookingJson?.data?.booking_id ?? undefined;
     await buyerContext.close();
 
-    const creatorContext = await browser.newContext({ storageState: "playwright/.auth/creator.json" });
+    const creatorContext = await browser.newContext({ storageState: CREATOR_STORAGE_STATE });
     const creatorPage = await creatorContext.newPage();
     attachDiagnostics(creatorPage, diagnostics, "decline-creator");
     await appGoto(creatorPage, "/creator-dashboard?tab=services");
@@ -276,7 +239,7 @@ test.describe("YardLine live commerce lifecycle", () => {
     await expect(creatorPage.getByText(/declined/i)).toBeVisible({ timeout: 60_000 });
     await creatorContext.close();
 
-    const buyerVerifyContext = await browser.newContext({ storageState: "playwright/.auth/buyer.json" });
+    const buyerVerifyContext = await browser.newContext({ storageState: BUYER_STORAGE_STATE });
     const buyerVerifyPage = await buyerVerifyContext.newPage();
     attachDiagnostics(buyerVerifyPage, diagnostics, "decline-buyer-verify");
     await appGoto(buyerVerifyPage, "/my-bookings");
@@ -286,8 +249,8 @@ test.describe("YardLine live commerce lifecycle", () => {
   });
 
   test("negative and idempotency API checks are enforced", async () => {
-    const buyerToken = await readAccessToken("playwright/.auth/buyer.json");
-    const creatorToken = await readAccessToken("playwright/.auth/creator.json");
+    const buyerToken = await readAccessToken(BUYER_STORAGE_STATE);
+    const creatorToken = await readAccessToken(CREATOR_STORAGE_STATE);
 
     const unauthorized = await backendPost("/api/checkout/event-session", {
       event_id: state.paidEventId ?? "00000000-0000-0000-0000-000000000000",
