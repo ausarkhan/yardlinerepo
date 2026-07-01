@@ -112,10 +112,10 @@ export type EventCheckoutResponse = z.infer<typeof EventCheckoutResponse>;
 // ---------------------------------------------------------------------------
 
 export const BookingIntentRequest = z.object({
-  service_id: z.string(),
+  service_id: z.string().uuid(),
   provider_user_id: z.string().uuid(),
-  date: z.string(), // YYYY-MM-DD
-  time_start: z.string(), // HH:MM
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // YYYY-MM-DD
+  time_start: z.string().regex(/^([01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/), // HH:MM or HH:MM:SS
 });
 export type BookingIntentRequest = z.infer<typeof BookingIntentRequest>;
 

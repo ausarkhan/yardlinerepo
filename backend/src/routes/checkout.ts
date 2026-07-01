@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { stripe, stripeConfigured, isTestMode } from "../lib/stripe";
-import { getUserId, sbSelect, sbInsert, sbUpdate, supabaseConfigured } from "../lib/supabase";
+import { getUserId, sbSelect, sbInsert, sbUpdate, sbDelete, supabaseConfigured } from "../lib/supabase";
 import { lineFees, singleBreakdown } from "../lib/fees";
 import {
   EventCheckoutRequest,
@@ -227,6 +227,7 @@ checkoutRouter.post("/booking-intent", async (c) => {
     return c.json({ error: { message: "Invalid booking request", code: "bad_request" } }, 400);
   }
   const { service_id, provider_user_id, date, time_start } = parsed.data;
+  let createdBookingId: string | null = null;
 
   const blocked = (message: string): BookingIntentResponse => ({
     booking_id: null,
@@ -335,6 +336,7 @@ checkoutRouter.post("/booking-intent", async (c) => {
     );
     const booking = bookingRows[0];
     if (!booking) throw new Error("Could not create booking");
+    createdBookingId = booking.id;
 
     const intent = await stripe!.paymentIntents.create({
       amount: breakdown.amount_total,
@@ -363,9 +365,16 @@ checkoutRouter.post("/booking-intent", async (c) => {
     };
     return c.json({ data: resp });
   } catch (e) {
-    return c.json({
-      data: blocked(e instanceof Error ? e.message : "Could not start booking checkout."),
-    });
+    if (createdBookingId) {
+      await sbDelete("bookings", `id=eq.${encodeURIComponent(createdBookingId)}&payment_intent_id=is.null`).catch(
+        () => undefined,
+      );
+    }
+    const message = e instanceof Error ? e.message : "Could not start booking checkout.";
+    if (/invalid input syntax|bad request|invalid/i.test(message)) {
+      return c.json({ error: { message, code: "bad_request" } }, 400);
+    }
+    return c.json({ error: { message, code: "booking_intent_failed" } }, 500);
   }
 });
 

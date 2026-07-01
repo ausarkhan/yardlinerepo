@@ -88,6 +88,16 @@ export async function fetchOrdersForHost(hostId: string): Promise<OrderRow[]> {
   );
 }
 
+export async function fetchOrdersForEvent(eventId: string): Promise<OrderRow[]> {
+  return safeSelect<OrderRow>(() =>
+    supabase
+      .from("yardtix_orders")
+      .select("*")
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: false }),
+  );
+}
+
 // ---- Tickets --------------------------------------------------------------
 
 export async function fetchTicketsForOrder(orderId: string): Promise<TicketRow[]> {
@@ -107,6 +117,17 @@ export async function fetchTicketsForHolder(holderId: string): Promise<TicketRow
       .from("yardtix_tickets")
       .select("*")
       .eq("holder_id", holderId)
+      .order("created_at", { ascending: false }),
+  );
+}
+
+// Confirmed tickets for an event, readable by the host through RLS.
+export async function fetchTicketsForEvent(eventId: string): Promise<TicketRow[]> {
+  return safeSelect<TicketRow>(() =>
+    supabase
+      .from("yardtix_tickets")
+      .select("*")
+      .eq("event_id", eventId)
       .order("created_at", { ascending: false }),
   );
 }
