@@ -6,6 +6,9 @@ import process from "node:process";
 export const CREATOR_EMAIL = process.env.CREATOR_EMAIL ?? "ausarkhan@gmail.com";
 export const BUYER_EMAIL = process.env.BUYER_EMAIL ?? "markmurphy235@gmail.com";
 export const STRIPE_TEST_CARD = process.env.STRIPE_TEST_CARD ?? "4242424242424242";
+export const AUTH_DIR = "playwright/.auth";
+export const CREATOR_STORAGE_STATE = `${AUTH_DIR}/creator.json`;
+export const BUYER_STORAGE_STATE = `${AUTH_DIR}/buyer.json`;
 
 export interface LiveCommerceState {
   runId: string;
@@ -285,8 +288,8 @@ export async function fillStripePaymentFields(page: Page): Promise<void> {
   await fillAnyStripeField(page, ["input[name='cardNumber']", "input[name='number']"], STRIPE_TEST_CARD);
   await fillAnyStripeField(page, ["input[name='cardExpiry']", "input[name='expiry']"], "1234");
   await fillAnyStripeField(page, ["input[name='cardCvc']", "input[name='cvc']"], "123");
-  await fillAnyStripeField(page, ["input[name='billingName']", "input[name='name']"], "YardLine QA");
-  await fillAnyStripeField(page, ["input[name='billingPostalCode']", "input[name='postalCode']"], "10001");
+  await fillOptionalStripeField(page, ["input[name='billingName']", "input[name='name']"], "YardLine QA");
+  await fillOptionalStripeField(page, ["input[name='billingPostalCode']", "input[name='postalCode']"], "10001");
 }
 
 export async function completeStripeCheckout(page: Page, email: string): Promise<void> {
@@ -297,19 +300,12 @@ export async function completeStripeCheckout(page: Page, email: string): Promise
     await cardChoice.click({ force: true });
   }
   await fillStripePaymentFields(page);
+  await acceptStripeAiDisclosure(page);
+  await declineStripeLinkSaveInfo(page);
   await page.getByTestId("hosted-payment-submit-button")
-    .or(page.getByRole("button", { name: /pay/i }))
-    .first()
+    .or(page.getByRole("button", { name: /^pay$/i }))
+    .last()
     .click();
-
-  const aiDisclosure = page.getByText(/i am an ai agent/i);
-  if (await aiDisclosure.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await aiDisclosure.click({ force: true });
-    await page.getByTestId("hosted-payment-submit-button")
-      .or(page.getByRole("button", { name: /pay/i }))
-      .first()
-      .click();
-  }
 }
 
 export async function readAccessToken(storageStatePath: string): Promise<string> {
@@ -345,7 +341,28 @@ export async function backendPost<T>(
 
 export async function authorizeEmbeddedStripePayment(page: Page): Promise<void> {
   await fillStripePaymentFields(page);
+  await acceptStripeAiDisclosure(page);
   await page.getByRole("button", { name: /authorize card/i }).click();
+}
+
+async function acceptStripeAiDisclosure(page: Page): Promise<void> {
+  const aiDisclosure = page.getByRole("checkbox", { name: /i am an ai agent/i });
+  if (await aiDisclosure.isVisible({ timeout: 5_000 }).catch(() => false)) {
+    await aiDisclosure.evaluate((element) => {
+      const checkbox = element as HTMLInputElement;
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event("input", { bubbles: true }));
+      checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+}
+
+async function declineStripeLinkSaveInfo(page: Page): Promise<void> {
+  const saveInfo = page.getByRole("checkbox", { name: /save my information for faster checkout/i }).first();
+  if (!(await saveInfo.isVisible({ timeout: 2_000 }).catch(() => false))) return;
+  if (await saveInfo.isChecked().catch(() => false)) {
+    await saveInfo.uncheck({ force: true });
+  }
 }
 
 async function fillAnyStripeField(page: Page, selectors: string[], value: string): Promise<void> {
@@ -362,6 +379,20 @@ async function fillAnyStripeField(page: Page, selectors: string[], value: string
   }
 
   throw new Error(`Could not find Stripe field: ${selectors.join(", ")}`);
+}
+
+async function fillOptionalStripeField(page: Page, selectors: string[], value: string): Promise<void> {
+  for (const selector of selectors) {
+    const locator = page.locator(selector).first();
+    if (await locator.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await locator.fill(value);
+      return;
+    }
+  }
+
+  for (const frame of page.frames()) {
+    if (await fillFrameField(frame, selectors, value)) return;
+  }
 }
 
 async function fillFrameField(frame: Frame, selectors: string[], value: string): Promise<boolean> {

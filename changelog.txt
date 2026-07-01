@@ -265,3 +265,24 @@ YardLine Web — Phase 6: Organizations and Campus Management
 - Build note: the container does not have bun installed and webapp dependencies are absent, so
   the project build could not be run locally in this environment.
 - Changes made by agent 2026-06-26T03:55:00Z
+
+YardLine Web — Playwright commerce QA: hosted Checkout diagnosis + webhook validation path
+
+- Inspected the paid-ticket Stripe Checkout failure artifacts. The trace/screenshot showed the
+  visible Pay button was used and card fields were filled, but Stripe Link's "Save my
+  information for faster checkout" checkbox was checked and exposed a required phone-number
+  field with validation. This was the missed hosted Checkout UI step.
+- Updated the paid-ticket Stripe helper to opt out of Link saved-info before submitting Pay.
+  A follow-up focused paid-ticket run completed hosted Checkout and redirected to YardLine.
+- Added Stripe Session state classification to `npm run test:commerce:stripe-session`; the
+  latest session classified as `complete_paid_payment_intent_succeeded`.
+- Verified Railway still reports the paid-ticket order as pending with zero tickets after
+  Stripe completion, so the remaining blocker is webhook delivery/finalization, not hosted
+  Checkout automation.
+- Listed the Stripe test webhook endpoint: it is enabled but points to
+  `https://api.yardline.app/v1/stripe/webhook`, not the Railway
+  `/api/webhooks/stripe` route used by QA.
+- Updated `PLAYWRIGHT_COMMERCE_QA_REPORT.md` with the hosted Checkout diagnosis, exact Stripe
+  polling result, webhook validation status, Stripe CLI validation commands, and remaining
+  launch blockers. Stripe CLI is not installed/authenticated in this container, so signed
+  webhook replay remains unvalidated.

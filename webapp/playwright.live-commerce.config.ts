@@ -3,7 +3,6 @@ import process from "node:process";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /live-commerce\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   timeout: 180_000,
@@ -21,4 +20,15 @@ export default defineConfig({
     trace: "retain-on-failure",
     video: "retain-on-failure",
   },
+  projects: [
+    {
+      name: "auth",
+      testMatch: /live-commerce\.auth\.setup\.ts/,
+    },
+    {
+      name: "commerce",
+      testMatch: /live-commerce\.spec\.ts/,
+      dependencies: ["auth"],
+    },
+  ],
 });

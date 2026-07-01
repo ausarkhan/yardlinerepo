@@ -10,7 +10,11 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:commerce:live": "playwright test --config=playwright.live-commerce.config.ts"
+    "test:commerce:auth": "playwright test --config=playwright.live-commerce.config.ts --project=auth",
+    "test:commerce:paid-ticket": "playwright test --config=playwright.live-commerce.config.ts --project=commerce --grep \"paid ticket\"",
+    "test:commerce:booking": "playwright test --config=playwright.live-commerce.config.ts --project=commerce --grep \"service booking payment\"",
+    "test:commerce:live": "playwright test --config=playwright.live-commerce.config.ts --project=commerce",
+    "test:commerce:stripe-session": "node scripts/validate-stripe-checkout.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
