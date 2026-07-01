@@ -470,3 +470,37 @@ Final Conclusion
 NOT READY FOR COMMERCE BETA
 
 Reason: the Stripe Checkout helper issue is fixed, the local backend booking-intent code now returns error statuses for invalid booking requests, and the local webapp attendee page now includes paid tickets. The deployed live stack still needs these backend/webapp changes before the full commerce suite can pass.
+
+Paid Attendee Deployment Verification Rerun - 2026-07-01
+--------------------------------------------------------
+
+Source/data-source verification:
+
+- The creator Attendees page uses `webapp/src/hooks/useEventAttendees.ts`.
+- Free RSVP attendees are read from `event_attendees`.
+- Paid purchases are minted by the Stripe webhook into `yardtix_tickets` after updating `yardtix_orders` to paid/confirmed.
+- The webhook in `backend/src/routes/webhooks.ts` does not create `event_attendees` rows for paid purchases.
+- The selected fix remains the least invasive schema-compatible path: `useEventAttendees` reads paid ticket buyers from `yardtix_tickets` plus `yardtix_orders` and merges them with RSVP rows.
+
+Current code/deployment state:
+
+- The fix is committed on `playwright-commerce-qa` as `14121e0 Fix paid ticket attendee visibility`.
+- `git branch -a --contains 14121e0` shows only local `playwright-commerce-qa` and `origin/playwright-commerce-qa`; it is not in `origin/main`.
+- `webapp/playwright.live-commerce.config.ts` targets deployed Vercel, so live test failures still reflect the deployed `main` state until the branch is merged and Vercel redeploys.
+- Merge/deploy could not be completed from this workspace because `gh auth status` reports the active `GITHUB_TOKEN` is invalid, and `gh pr list --head playwright-commerce-qa` cannot reach `api.github.com`.
+
+Requested verification rerun from `webapp/`:
+
+```bash
+npm run build
+npm run test:commerce:paid-ticket
+npm run test:commerce:live
+```
+
+Results:
+
+- `npm run build`: PASS in 11.25s with the existing Vite large chunk warning.
+- `npm run test:commerce:paid-ticket`: FAIL against deployed Vercel, 2 passed and 1 failed in 2.1m. Checkout completed, but event `PLAYWRIGHT COMMERCE QA 20260701232955 Paid Ticket` never showed the `1 tickets` attendee summary.
+- `npm run test:commerce:live`: FAIL against deployed Vercel, 2 passed, 1 failed, and 5 did not run in 1.8m. The suite stopped at event `PLAYWRIGHT COMMERCE QA 20260701233151 Paid Ticket` with the same missing `1 tickets` attendee assertion.
+
+Final status: NOT READY FOR COMMERCE BETA until `14121e0` is merged to the deployed branch and Vercel has redeployed, then the live commerce suite is rerun.
