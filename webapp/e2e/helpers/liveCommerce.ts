@@ -1,4 +1,4 @@
-import { expect, type Frame, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Frame, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { createInterface } from "node:readline/promises";
 import { readFile, rm } from "node:fs/promises";
 import process from "node:process";
@@ -295,10 +295,7 @@ export async function fillStripePaymentFields(page: Page): Promise<void> {
 export async function completeStripeCheckout(page: Page, email: string): Promise<void> {
   await expect(page).toHaveURL(/checkout\.stripe\.com/);
   await page.getByLabel(/^email$/i).fill(email).catch(() => undefined);
-  const cardChoice = page.getByLabel(/pay with card/i).or(page.getByText(/^card$/i)).first();
-  if (await cardChoice.isVisible().catch(() => false)) {
-    await cardChoice.click({ force: true });
-  }
+  await expandStripeCheckoutCardSection(page);
   await fillStripePaymentFields(page);
   await acceptStripeAiDisclosure(page);
   await declineStripeLinkSaveInfo(page);
@@ -365,6 +362,54 @@ async function declineStripeLinkSaveInfo(page: Page): Promise<void> {
   }
 }
 
+async function expandStripeCheckoutCardSection(page: Page): Promise<void> {
+  const cardNumberSelectors = ["input[name='cardNumber']", "input[name='number']"];
+  await screenshotStripeCheckout(page, "before-card-expand");
+
+  await clickFirstVisibleLocator(stripeCardSectionControls(page));
+  if (!(await hasVisibleStripeCardNumberUi(page, cardNumberSelectors, 3_000))) {
+    await clickFirstVisibleLocator(stripeCardFallbackControls(page));
+  }
+  await screenshotStripeCheckout(page, "after-card-expand");
+
+  await waitForStripeCardNumberUi(page, cardNumberSelectors, 15_000);
+}
+
+function stripeCardSectionControls(page: Page): Locator {
+  const cardControlName = /pay with card|card/i;
+  return page
+    .locator('button[data-testid*="card" i], button[aria-label*="card" i], [role="tab"][aria-label*="card" i]')
+    .or(page.locator('[role="tab"]').filter({ hasText: cardControlName }))
+    .or(page.getByRole("button", { name: cardControlName }))
+    .or(page.getByRole("tab", { name: cardControlName }))
+    .or(page.locator("button").filter({ hasText: cardControlName }));
+}
+
+function stripeCardFallbackControls(page: Page): Locator {
+  return page
+    .getByRole("radio", { name: /^card$/i })
+    .or(page.getByText(/^card$/i));
+}
+
+async function clickFirstVisibleLocator(locator: Locator): Promise<boolean> {
+  const count = await locator.count();
+  for (let index = 0; index < count; index += 1) {
+    const candidate = locator.nth(index);
+    if (await candidate.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await candidate.click({ force: true });
+      return true;
+    }
+  }
+  return false;
+}
+
+async function screenshotStripeCheckout(page: Page, label: string): Promise<void> {
+  await page.screenshot({
+    path: `test-results/stripe-checkout-${label}.png`,
+    fullPage: true,
+  }).catch(() => undefined);
+}
+
 async function fillAnyStripeField(page: Page, selectors: string[], value: string): Promise<void> {
   for (const selector of selectors) {
     const locator = page.locator(selector).first();
@@ -379,6 +424,40 @@ async function fillAnyStripeField(page: Page, selectors: string[], value: string
   }
 
   throw new Error(`Could not find Stripe field: ${selectors.join(", ")}`);
+}
+
+async function waitForStripeCardNumberUi(page: Page, selectors: string[], timeout: number): Promise<void> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (await hasVisibleStripeCardNumberUi(page, selectors, 500)) return;
+    await page.waitForTimeout(250);
+  }
+  throw new Error(`Timed out waiting for Stripe card number UI: ${selectors.join(", ")}, iframe card fields, or Card number label`);
+}
+
+async function hasVisibleStripeField(page: Page, selectors: string[], timeout: number): Promise<boolean> {
+  for (const selector of selectors) {
+    if (await page.locator(selector).first().isVisible({ timeout }).catch(() => false)) return true;
+  }
+
+  for (const frame of page.frames()) {
+    for (const selector of selectors) {
+      if (await frame.locator(selector).first().isVisible({ timeout }).catch(() => false)) return true;
+    }
+  }
+
+  return false;
+}
+
+async function hasVisibleStripeCardNumberUi(page: Page, selectors: string[], timeout: number): Promise<boolean> {
+  if (await hasVisibleStripeField(page, selectors, timeout)) return true;
+  if (await page.getByText(/card number/i).first().isVisible({ timeout }).catch(() => false)) return true;
+
+  for (const frame of page.frames()) {
+    if (await frame.getByText(/card number/i).first().isVisible({ timeout }).catch(() => false)) return true;
+  }
+
+  return false;
 }
 
 async function fillOptionalStripeField(page: Page, selectors: string[], value: string): Promise<void> {

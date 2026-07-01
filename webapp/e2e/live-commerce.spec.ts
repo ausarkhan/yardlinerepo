@@ -93,11 +93,23 @@ test.describe("YardLine live commerce lifecycle", () => {
     await expect(buyerPage.getByText("$13.33")).toBeVisible();
     await completeStripeCheckout(buyerPage, BUYER_EMAIL);
     await expect(buyerPage).toHaveURL(/yardlinerepo\.vercel\.app\/receipt/, { timeout: 120_000 });
-    await expect(buyerPage.getByText(state.paidEventTitle)).toBeVisible({ timeout: 60_000 });
+    await expect(buyerPage.getByRole("heading", { name: "Payment confirmed" })).toBeVisible({ timeout: 60_000 });
+    const orderSummary = buyerPage.locator(".rounded-2xl.border").filter({
+      has: buyerPage.getByRole("heading", { name: "Order summary" }),
+    });
+    await expect(orderSummary.getByText("Paid", { exact: true })).toBeVisible();
+    await expect(orderSummary.getByText(state.paidEventTitle, { exact: true })).toBeVisible();
+    const receiptTickets = buyerPage.locator(".rounded-2xl.border").filter({
+      has: buyerPage.getByRole("heading", { name: "Your tickets" }),
+    });
+    await expect(receiptTickets.getByText("General Admission")).toBeVisible();
 
     await appGoto(buyerPage, "/my-yardtix");
-    await expect(buyerPage.getByText(state.paidEventTitle)).toBeVisible();
-    await expect(buyerPage.getByText(/qr|check.?in|ticket/i)).toBeVisible();
+    const buyerTicketCard = buyerPage.locator(".rounded-2xl.border").filter({
+      has: buyerPage.getByRole("link", { name: state.paidEventTitle }),
+    });
+    await expect(buyerTicketCard).toBeVisible();
+    await expect(buyerTicketCard.getByText(/ticket\b.*confirmed|confirmed.*ticket\b/i)).toBeVisible();
     await buyerContext.close();
 
     const creatorVerifyContext = await browser.newContext({ storageState: CREATOR_STORAGE_STATE });
@@ -105,7 +117,19 @@ test.describe("YardLine live commerce lifecycle", () => {
     attachDiagnostics(creatorVerifyPage, diagnostics, "paid-creator-verify");
     await openEventFromDirectory(creatorVerifyPage, state.paidEventTitle);
     await creatorVerifyPage.getByRole("button", { name: /attendees/i }).click();
-    await expect(creatorVerifyPage.getByText(BUYER_EMAIL).or(creatorVerifyPage.getByText(/ticket/i))).toBeVisible();
+    const paidEventAttendees = creatorVerifyPage.locator("main").filter({
+      has: creatorVerifyPage.getByRole("heading", { name: "Attendees" }),
+      hasText: state.paidEventTitle,
+    });
+    await expect(paidEventAttendees).toBeVisible();
+    await expect(paidEventAttendees.getByText(/^1 tickets$/i)).toBeVisible({ timeout: 60_000 });
+    const paidTicketAttendee = paidEventAttendees
+      .locator("tbody tr, .rounded-2xl.border")
+      .filter({ hasText: BUYER_EMAIL })
+      .filter({ hasText: "ticket" })
+      .first();
+    await expect(paidTicketAttendee).toBeVisible();
+    await expect(paidTicketAttendee).toContainText(/confirmed/i);
     await creatorVerifyContext.close();
   });
 
@@ -243,8 +267,8 @@ test.describe("YardLine live commerce lifecycle", () => {
     const buyerVerifyPage = await buyerVerifyContext.newPage();
     attachDiagnostics(buyerVerifyPage, diagnostics, "decline-buyer-verify");
     await appGoto(buyerVerifyPage, "/my-bookings");
-    await expect(buyerVerifyPage.getByText(state.serviceName)).toBeVisible();
-    await expect(buyerVerifyPage.getByText(/declined/i)).toBeVisible();
+    const declinedBooking = buyerVerifyPage.locator("div").filter({ hasText: state.serviceName }).filter({ hasText: /declined/i }).first();
+    await expect(declinedBooking).toBeVisible();
     await buyerVerifyContext.close();
   });
 
