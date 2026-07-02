@@ -504,3 +504,34 @@ Results:
 - `npm run test:commerce:live`: FAIL against deployed Vercel, 2 passed, 1 failed, and 5 did not run in 1.8m. The suite stopped at event `PLAYWRIGHT COMMERCE QA 20260701233151 Paid Ticket` with the same missing `1 tickets` attendee assertion.
 
 Final status: NOT READY FOR COMMERCE BETA until `14121e0` is merged to the deployed branch and Vercel has redeployed, then the live commerce suite is rerun.
+
+Booking Accept Idempotency Fix and Final Live Result - 2026-07-02
+-----------------------------------------------------------------
+
+Investigation result:
+
+- The failure at `webapp/e2e/live-commerce.spec.ts:312` was not a blind test issue.
+- The test intentionally reuses `state.acceptedBookingId`, which is the booking created in the earlier "service booking payment" flow and accepted through the creator UI.
+- The final API check then calls `POST /api/bookings/:id/accept` twice more to verify repeated accept behavior.
+- That is a valid product expectation: repeated accept must not double-capture and should return a safe idempotent response.
+- The backend route already returned 200 when the booking row had `payment_status = captured`, but it could still return 400 if the booking row was stale/authorized while Stripe had already captured the PaymentIntent.
+
+Fix:
+
+- `backend/src/routes/bookings.ts` now treats Stripe duplicate-capture/already-succeeded errors as idempotent success.
+- On that safe duplicate path, the route updates the booking row to `status = confirmed` and `payment_status = captured`, then returns the same 200 response shape with `message = "Already captured."`.
+- No duplicate capture is attempted after Stripe reports the PaymentIntent is already captured/succeeded, and no extra notification path was added.
+
+Verification:
+
+```bash
+cd webapp
+npm run test:commerce:live
+```
+
+Result:
+
+- PASS: 8 passed in 2.3m.
+- Paid-ticket checkout, creator attendee visibility, checkout cancellation, free RSVP, booking authorization/capture, booking decline, and negative/idempotency API checks all passed against the live commerce targets.
+
+Final status: READY FOR COMMERCE BETA based on the live commerce suite passing on 2026-07-02.
