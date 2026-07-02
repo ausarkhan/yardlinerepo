@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type Stripe from "stripe";
 import { stripe, stripeConfigured } from "../lib/stripe";
 import { getUserId, sbSelect, sbUpdate, supabaseConfigured } from "../lib/supabase";
 import type { BookingActionResponse } from "../types";
@@ -73,51 +74,112 @@ async function markCaptured(id: string): Promise<void> {
 
 function isAlreadyCapturedStripeError(e: unknown): boolean {
   const message = e instanceof Error ? e.message : String(e ?? "");
-  return /already.*captur|already.*succeed|status of succeeded|cannot.*capture.*succeeded/i.test(message);
+  return /already.*captur|already.*succeed|status of succeeded|not capturable|cannot.*capture.*succeeded|could not be captured.*succeeded/i.test(
+    message,
+  );
+}
+
+function stripeIntentIsCaptured(pi: Stripe.PaymentIntent): boolean {
+  return pi.status === "succeeded" || pi.amount_received > 0;
+}
+
+function stripeIntentIsCapturable(pi: Stripe.PaymentIntent): boolean {
+  return pi.status === "requires_capture" && pi.amount_capturable > 0;
+}
+
+function errorMessage(e: unknown, fallback: string): string {
+  return e instanceof Error ? e.message : String(e || fallback);
+}
+
+function logAcceptError(id: string, paymentIntentId: string | null, stage: string, e: unknown): void {
+  console.error("[bookings.accept] failed", {
+    booking_id: id,
+    payment_intent_id: paymentIntentId,
+    stage,
+    message: errorMessage(e, "Accept failed"),
+  });
 }
 
 // ---------------------------------------------------------------------------
 // POST /api/bookings/:id/accept — capture the authorized payment, confirm.
 // ---------------------------------------------------------------------------
 bookingsRouter.post("/:id/accept", async (c) => {
-  const userId = await getUserId(c.req.header("Authorization"));
-  if (!userId) return c.json({ error: { message: "Not authenticated", code: "unauthorized" } }, 401);
-  if (!stripeConfigured() || !supabaseConfigured()) {
-    return c.json({ error: { message: "Payments are not configured", code: "unavailable" } }, 503);
-  }
-
   const id = c.req.param("id");
-  const { booking, status, message } = await loadProviderBooking(id, userId);
-  if (!booking) return c.json({ error: { message, code: "error" } }, (status as 403) ?? 400);
-
-  // Idempotent: already captured.
-  if (booking.payment_status === "captured") {
-    return c.json({ data: capturedResponse(id, "Already captured.") });
-  }
-
-  if (!booking.payment_intent_id) {
-    return c.json({ error: { message: "No authorized payment to capture", code: "bad_request" } }, 400);
-  }
-
   try {
-    await stripe!.paymentIntents.capture(booking.payment_intent_id);
-    // Optimistic write for immediacy; the payment_intent.succeeded webhook is
-    // idempotent and will converge to the same state.
-    await markCaptured(id);
-    return c.json({ data: capturedResponse(id) });
-  } catch (e) {
-    // A repeated accept can race the webhook/DB write: Stripe may already have
-    // captured the PaymentIntent while the booking row still reads authorized.
-    // Converge local state and return an idempotent success instead of trying a
-    // second capture or surfacing a safe duplicate as a 400.
-    if (isAlreadyCapturedStripeError(e)) {
+    const userId = await getUserId(c.req.header("Authorization"));
+    if (!userId) return c.json({ error: { message: "Not authenticated", code: "unauthorized" } }, 401);
+    if (!stripeConfigured() || !supabaseConfigured()) {
+      return c.json({ error: { message: "Payments are not configured", code: "unavailable" } }, 503);
+    }
+
+    const { booking, status, message } = await loadProviderBooking(id, userId);
+    if (!booking) return c.json({ error: { message, code: "error" } }, (status as 403) ?? 400);
+
+    // Idempotent: already captured locally. Keep status converged too in case a
+    // previous write captured payment_status but left status stale.
+    if (booking.payment_status === "captured") {
       await markCaptured(id);
       return c.json({ data: capturedResponse(id, "Already captured.") });
     }
-    return c.json(
-      { error: { message: e instanceof Error ? e.message : "Capture failed", code: "stripe_error" } },
-      400,
-    );
+
+    if (!booking.payment_intent_id) {
+      return c.json({ error: { message: "No authorized payment to capture", code: "bad_request" } }, 400);
+    }
+
+    const paymentIntent = await stripe!.paymentIntents.retrieve(booking.payment_intent_id);
+    if (stripeIntentIsCaptured(paymentIntent)) {
+      await markCaptured(id);
+      return c.json({ data: capturedResponse(id, "Already captured.") });
+    }
+
+    if (!stripeIntentIsCapturable(paymentIntent)) {
+      return c.json(
+        {
+          error: {
+            message: `PaymentIntent is not capturable in status ${paymentIntent.status}`,
+            code: "not_capturable",
+          },
+        },
+        409,
+      );
+    }
+
+    try {
+      const captured = await stripe!.paymentIntents.capture(booking.payment_intent_id);
+      // Optimistic write for immediacy; the payment_intent.succeeded webhook is
+      // idempotent and will converge to the same state.
+      if (stripeIntentIsCaptured(captured)) {
+        await markCaptured(id);
+        return c.json({ data: capturedResponse(id) });
+      }
+
+      return c.json(
+        {
+          error: {
+            message: `PaymentIntent capture did not succeed; status is ${captured.status}`,
+            code: "capture_incomplete",
+          },
+        },
+        409,
+      );
+    } catch (e) {
+      // A repeated accept can race the webhook/DB write: Stripe may already have
+      // captured the PaymentIntent while the booking row still reads authorized.
+      // Converge local state and return an idempotent success instead of trying a
+      // second capture or surfacing a safe duplicate as a failure.
+      if (isAlreadyCapturedStripeError(e)) {
+        const latest = await stripe!.paymentIntents.retrieve(booking.payment_intent_id);
+        if (stripeIntentIsCaptured(latest)) {
+          await markCaptured(id);
+          return c.json({ data: capturedResponse(id, "Already captured.") });
+        }
+      }
+      logAcceptError(id, booking.payment_intent_id, "capture", e);
+      return c.json({ error: { message: errorMessage(e, "Capture failed"), code: "stripe_error" } }, 400);
+    }
+  } catch (e) {
+    logAcceptError(id, null, "route", e);
+    return c.json({ error: { message: errorMessage(e, "Accept failed"), code: "accept_error" } }, 500);
   }
 });
 
