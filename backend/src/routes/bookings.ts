@@ -54,6 +54,28 @@ const CUSTOMER_CANCELABLE = new Set([
   "pending_provider_review",
 ]);
 
+function capturedResponse(id: string, message: string | null = null): BookingActionResponse {
+  return {
+    booking_id: id,
+    status: "confirmed",
+    payment_status: "captured",
+    message,
+  };
+}
+
+async function markCaptured(id: string): Promise<void> {
+  await sbUpdate("bookings", `id=eq.${encodeURIComponent(id)}`, {
+    status: "confirmed",
+    payment_status: "captured",
+    updated_at: new Date().toISOString(),
+  });
+}
+
+function isAlreadyCapturedStripeError(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : String(e ?? "");
+  return /already.*captur|already.*succeed|status of succeeded|cannot.*capture.*succeeded/i.test(message);
+}
+
 // ---------------------------------------------------------------------------
 // POST /api/bookings/:id/accept — capture the authorized payment, confirm.
 // ---------------------------------------------------------------------------
@@ -70,13 +92,7 @@ bookingsRouter.post("/:id/accept", async (c) => {
 
   // Idempotent: already captured.
   if (booking.payment_status === "captured") {
-    const resp: BookingActionResponse = {
-      booking_id: id,
-      status: "confirmed",
-      payment_status: "captured",
-      message: "Already captured.",
-    };
-    return c.json({ data: resp });
+    return c.json({ data: capturedResponse(id, "Already captured.") });
   }
 
   if (!booking.payment_intent_id) {
@@ -87,19 +103,17 @@ bookingsRouter.post("/:id/accept", async (c) => {
     await stripe!.paymentIntents.capture(booking.payment_intent_id);
     // Optimistic write for immediacy; the payment_intent.succeeded webhook is
     // idempotent and will converge to the same state.
-    await sbUpdate("bookings", `id=eq.${id}`, {
-      status: "confirmed",
-      payment_status: "captured",
-      updated_at: new Date().toISOString(),
-    });
-    const resp: BookingActionResponse = {
-      booking_id: id,
-      status: "confirmed",
-      payment_status: "captured",
-      message: null,
-    };
-    return c.json({ data: resp });
+    await markCaptured(id);
+    return c.json({ data: capturedResponse(id) });
   } catch (e) {
+    // A repeated accept can race the webhook/DB write: Stripe may already have
+    // captured the PaymentIntent while the booking row still reads authorized.
+    // Converge local state and return an idempotent success instead of trying a
+    // second capture or surfacing a safe duplicate as a 400.
+    if (isAlreadyCapturedStripeError(e)) {
+      await markCaptured(id);
+      return c.json({ data: capturedResponse(id, "Already captured.") });
+    }
     return c.json(
       { error: { message: e instanceof Error ? e.message : "Capture failed", code: "stripe_error" } },
       400,
