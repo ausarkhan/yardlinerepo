@@ -72,11 +72,36 @@ async function markCaptured(id: string): Promise<void> {
   });
 }
 
+async function markPaymentCapturedOnly(id: string): Promise<void> {
+  await sbUpdate("bookings", `id=eq.${encodeURIComponent(id)}`, {
+    payment_status: "captured",
+    updated_at: new Date().toISOString(),
+  });
+}
+
+async function convergeCapturedBooking(id: string, paymentIntentId: string): Promise<void> {
+  try {
+    await markCaptured(id);
+  } catch (e) {
+    if (!isDoubleBookingConflict(e)) throw e;
+    console.error("[bookings.accept] confirmed update blocked by no_double_booking; marking payment captured", {
+      booking_id: id,
+      payment_intent_id: paymentIntentId,
+      message: errorMessage(e, "Double booking conflict"),
+    });
+    await markPaymentCapturedOnly(id);
+  }
+}
+
 function isAlreadyCapturedStripeError(e: unknown): boolean {
   const message = e instanceof Error ? e.message : String(e ?? "");
   return /already.*captur|already.*succeed|status of succeeded|not capturable|cannot.*capture.*succeeded|could not be captured.*succeeded/i.test(
     message,
   );
+}
+
+function isDoubleBookingConflict(e: unknown): boolean {
+  return /no_double_booking|23P01|exclusion constraint/i.test(errorMessage(e, ""));
 }
 
 function stripeIntentIsCaptured(pi: Stripe.PaymentIntent): boolean {
@@ -118,7 +143,7 @@ bookingsRouter.post("/:id/accept", async (c) => {
     // Idempotent: already captured locally. Keep status converged too in case a
     // previous write captured payment_status but left status stale.
     if (booking.payment_status === "captured") {
-      await markCaptured(id);
+      await convergeCapturedBooking(id, booking.payment_intent_id ?? "unknown");
       return c.json({ data: capturedResponse(id, "Already captured.") });
     }
 
@@ -128,7 +153,7 @@ bookingsRouter.post("/:id/accept", async (c) => {
 
     const paymentIntent = await stripe!.paymentIntents.retrieve(booking.payment_intent_id);
     if (stripeIntentIsCaptured(paymentIntent)) {
-      await markCaptured(id);
+      await convergeCapturedBooking(id, booking.payment_intent_id);
       return c.json({ data: capturedResponse(id, "Already captured.") });
     }
 
@@ -149,7 +174,7 @@ bookingsRouter.post("/:id/accept", async (c) => {
       // Optimistic write for immediacy; the payment_intent.succeeded webhook is
       // idempotent and will converge to the same state.
       if (stripeIntentIsCaptured(captured)) {
-        await markCaptured(id);
+        await convergeCapturedBooking(id, booking.payment_intent_id);
         return c.json({ data: capturedResponse(id) });
       }
 
@@ -170,7 +195,7 @@ bookingsRouter.post("/:id/accept", async (c) => {
       if (isAlreadyCapturedStripeError(e)) {
         const latest = await stripe!.paymentIntents.retrieve(booking.payment_intent_id);
         if (stripeIntentIsCaptured(latest)) {
-          await markCaptured(id);
+          await convergeCapturedBooking(id, booking.payment_intent_id);
           return c.json({ data: capturedResponse(id, "Already captured.") });
         }
       }

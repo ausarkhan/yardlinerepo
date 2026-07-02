@@ -514,24 +514,59 @@ Investigation result:
 - The test intentionally reuses `state.acceptedBookingId`, which is the booking created in the earlier "service booking payment" flow and accepted through the creator UI.
 - The final API check then calls `POST /api/bookings/:id/accept` twice more to verify repeated accept behavior.
 - That is a valid product expectation: repeated accept must not double-capture and should return a safe idempotent response.
-- The backend route already returned 200 when the booking row had `payment_status = captured`, but it could still return 400 if the booking row was stale/authorized while Stripe had already captured the PaymentIntent.
+- The saved Playwright failure only exposed `Received: 500`; the Node-side `backendPost` calls are outside browser network tracing, so the response body was not in the Playwright trace.
+- After adding route-level logging/error JSON and replaying the latest failed booking (`377195c4-5b25-4253-87ed-cb3e615e837c`), the exact 500 body was captured:
+
+```json
+{
+  "error": {
+    "message": "Supabase update bookings 400: {\"code\":\"23P01\",\"details\":\"Key (provider_id, time_range)=(006725a3-50bc-40a4-841b-fd38282675c9, [\\\"2026-08-06 14:30:00\\\",\\\"2026-08-06 15:15:00\\\")) conflicts with existing key (provider_id, time_range)=(006725a3-50bc-40a4-841b-fd38282675c9, [\\\"2026-08-06 14:30:00\\\",\\\"2026-08-06 15:15:00\\\")).\",\"hint\":null,\"message\":\"conflicting key value violates exclusion constraint \\\"no_double_booking\\\"\"}",
+    "code": "accept_error"
+  }
+}
+```
+
+- Root cause: repeated live QA runs use the same provider/date/time slot. Stripe had already captured the new PaymentIntent, but the local row was still `pending_provider_review` / `authorized`. When the accept route tried to converge the row to `confirmed` / `captured`, Supabase rejected the `status = confirmed` update because an older confirmed booking already occupied that slot under the `no_double_booking` exclusion constraint.
 
 Fix:
 
-- `backend/src/routes/bookings.ts` now treats Stripe duplicate-capture/already-succeeded errors as idempotent success.
-- On that safe duplicate path, the route updates the booking row to `status = confirmed` and `payment_status = captured`, then returns the same 200 response shape with `message = "Already captured."`.
-- No duplicate capture is attempted after Stripe reports the PaymentIntent is already captured/succeeded, and no extra notification path was added.
+- `backend/src/routes/bookings.ts` now retrieves the Stripe PaymentIntent before capture.
+- If Stripe already reports `succeeded` / captured, the route does not call `capture` again.
+- If Stripe reports `requires_capture`, the route captures once, then converges local state.
+- If Stripe duplicate-capture / already-succeeded / not-capturable errors are returned, the route retrieves the latest PaymentIntent, confirms Stripe is actually captured, and returns idempotent success.
+- Route-level accept errors are logged with booking id, PaymentIntent id, stage, and message.
+- Local convergence first attempts the full `status = confirmed` and `payment_status = captured` update.
+- If Supabase rejects that full update with `no_double_booking` / SQLSTATE `23P01` after Stripe is already captured, the route persists `payment_status = captured`, logs the conflict, and still returns 200 with `message = "Already captured."`.
+- No second Stripe capture is attempted.
+- No explicit notification insert was added. The existing booking notification trigger only fires on status changes, and the conflict fallback updates only `payment_status`, so it does not duplicate booking notifications.
+
+Deployment:
+
+- Pushed `7092874 Make booking accept idempotent` to `main`.
+- The first production rerun still failed because the exact 500 was the Supabase `no_double_booking` convergence conflict above.
+- Pushed follow-up `483180d Handle captured booking slot conflicts` to `main`.
+- Railway health after deploy returned `200 {"status":"ok"}`.
+- Direct replay after the follow-up deploy:
+
+```text
+POST /api/bookings/377195c4-5b25-4253-87ed-cb3e615e837c/accept
+200 {"data":{"booking_id":"377195c4-5b25-4253-87ed-cb3e615e837c","status":"confirmed","payment_status":"captured","message":"Already captured."}}
+```
 
 Verification:
 
 ```bash
+cd backend
+npm run typecheck
+
 cd webapp
 npm run test:commerce:live
 ```
 
-Result:
+Results:
 
-- PASS: 8 passed in 2.3m.
+- `npm run typecheck`: PASS.
+- `npm run test:commerce:live`: PASS, 8 passed in 2.4m.
 - Paid-ticket checkout, creator attendee visibility, checkout cancellation, free RSVP, booking authorization/capture, booking decline, and negative/idempotency API checks all passed against the live commerce targets.
 
 Final status: READY FOR COMMERCE BETA based on the live commerce suite passing on 2026-07-02.
